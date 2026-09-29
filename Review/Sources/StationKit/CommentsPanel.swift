@@ -3,7 +3,7 @@ import QuartzCore
 
 /// The right-hand panel: every comment thread in the review, in review order,
 /// filterable (Open / Resolved / All). Click one to jump to it.
-final class CommentsPanel: NSViewController {
+final class CommentsPanel: NSViewController, NSSearchFieldDelegate {
     struct Item {
         let thread: Thread
         let line: Int?          // 1-based where it is now; nil = outdated
@@ -32,11 +32,13 @@ final class CommentsPanel: NSViewController {
     private var items: [Item] = []
     private var filter = Filter.open
     private let filterControl = NSSegmentedControl(labels: ["Open", "Resolved", "All"], trackingMode: .selectOne, target: nil, action: nil)
+    /// Words match the file, the text and who wrote it; author:, is:needs-you|ci|working|finding|pending.
+    fileprivate let search = NSSearchField()
     private let scroll = NSScrollView()
     private let list = FlippedStack()
     private let empty = NSTextField(labelWithString: "")
     private let markAll = NSButton(title: "Mark All as Read", target: nil, action: nil)
-    private lazy var scrollBelowFilter = scroll.topAnchor.constraint(equalTo: filterControl.bottomAnchor, constant: 10)
+    private lazy var scrollBelowFilter = scroll.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 8)
     private lazy var scrollBelowMarkAll = scroll.topAnchor.constraint(equalTo: markAll.bottomAnchor, constant: 4)
 
     override func loadView() {
@@ -64,7 +66,13 @@ final class CommentsPanel: NSViewController {
         markAll.toolTip = "Every reply waiting on you: seen (a new reply brings it back)"
         markAll.isHidden = true
 
-        for v in [filterControl, markAll, scroll, empty] as [NSView] {
+        search.placeholderString = "Filter comments"
+        search.toolTip = "Words match the file, the text and who wrote it · author:name · is:needs-you, is:ci, is:working, is:finding, is:pending"
+        search.controlSize = .small
+        search.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        search.delegate = self
+        search.sendsSearchStringImmediately = true
+        for v in [filterControl, search, markAll, scroll, empty] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -72,14 +80,17 @@ final class CommentsPanel: NSViewController {
             filterControl.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
             filterControl.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             filterControl.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            search.topAnchor.constraint(equalTo: filterControl.bottomAnchor, constant: 8),
+            search.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            search.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             scrollBelowFilter,
-            markAll.topAnchor.constraint(equalTo: filterControl.bottomAnchor, constant: 8),
+            markAll.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 6),
             markAll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             empty.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            empty.topAnchor.constraint(equalTo: filterControl.bottomAnchor, constant: 40),
+            empty.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 32),
             empty.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -40),
         ])
         view = root
@@ -106,15 +117,16 @@ final class CommentsPanel: NSViewController {
         rebuild()
     }
 
-    @objc private func rebuild() {
+    @objc fileprivate func rebuild() {
         guard isViewLoaded else { return }
+        let query = CommentFilter(search.stringValue)
         let shown = items.filter {
             switch filter {
             case .open: $0.status != .resolved
             case .resolved: $0.status == .resolved
             case .all: true
             }
-        }
+        }.filter(query.matches)
         list.subviews.forEach { $0.removeFromSuperview() }
         for item in shown {
             let row = CommentRow(item)
@@ -123,11 +135,12 @@ final class CommentsPanel: NSViewController {
             row.onSetResolved = { [weak self] in self?.onSetResolved?(item.thread, $0) }
             list.addSubview(row)
         }
-        empty.stringValue = switch filter {
+        let emptyText: String = switch filter {
         case .open: items.isEmpty ? "No comments yet.\nHover a line and click + to add one." : "Nothing open. 🎉"
         case .resolved: "No resolved comments."
         case .all: "No comments yet."
         }
+        empty.stringValue = !query.isEmpty && shown.isEmpty ? "No comments match." : emptyText
         empty.isHidden = !shown.isEmpty
         viewDidLayout()
     }
@@ -354,4 +367,39 @@ private final class ClosureMenuItem: NSMenuItem {
     }
     required init(coder: NSCoder) { fatalError() }
     @objc private func fire() { run() }
+}
+
+extension CommentsPanel {
+    func controlTextDidChange(_ obj: Notification) { rebuild() }
+    /// Self-tests: filter as if typed.
+    func setFilterForTests(_ text: String) { search.stringValue = text; rebuild() }
+}
+
+/// The comments filter: words must appear in the file, the comment text or an author;
+/// author:name; is:needs-you, is:ci, is:working, is:finding, is:pending (same prefix: any).
+struct CommentFilter {
+    private var words: [String] = [], authors: [String] = [], states: [String] = []
+    var isEmpty: Bool { words.isEmpty && authors.isEmpty && states.isEmpty }
+
+    init(_ text: String) {
+        for t in text.lowercased().split(separator: " ").map(String.init) {
+            if t.hasPrefix("author:"), t.count > 7 { authors.append(String(t.dropFirst(7)).trimmingCharacters(in: CharacterSet(charactersIn: "@"))) }
+            else if t.hasPrefix("is:"), t.count > 3 { states.append(String(t.dropFirst(3))) }
+            else { words.append(t) }
+        }
+    }
+
+    func matches(_ item: CommentsPanel.Item) -> Bool {
+        let who = item.thread.entries.map { $0.author.lowercased() }
+        let hay = ([item.thread.path] + item.thread.entries.map(\.body) + who).joined(separator: " ").lowercased()
+        guard words.allSatisfy(hay.contains) else { return false }
+        if !authors.isEmpty, !authors.contains(where: { a in who.contains { $0.contains(a) } }) { return false }
+        if !states.isEmpty, !states.contains(where: { s in
+            switch (s, item.status) {
+            case ("needs-you", .needsYou), ("ci", .ci), ("pending", .pending), ("working", .working), ("finding", .finding): true
+            default: false
+            }
+        }) { return false }
+        return true
+    }
 }
