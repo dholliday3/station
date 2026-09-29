@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "onramp": {
+      "command": "onramp",
+      "args": ["mcp"]
+    }
+  }
+}

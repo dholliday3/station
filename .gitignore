@@ -1,0 +1,15 @@
+# Xcode
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+build/
+*.xcresult
+.swiftpm/
+.build/
+# Rust core and its generated bindings (scripts/build-core.sh)
+core/target/
+Review/Frameworks/
+Review/Sources/onramp/Generated/
+# macOS
+.DS_Store
+dist/

@@ -1,0 +1,483 @@
+import Foundation
+import Observation
+import StoplightCore
+
+/// What to follow and what to ignore, plus watched PRs, pins, and menu bar look (FR-18, US-013).
+/// UserDefaults-backed. iCloud mirroring is OFF by default: it needs the
+/// `com.apple.developer.ubiquity-kvstore-identifier` entitlement (paid Apple Developer team).
+/// To enable: add the entitlement in project.yml and pass `cloud: .default` here.
+@MainActor
+@Observable
+final class UserPrefs {
+    enum SourceKind: String, CaseIterable, Identifiable {
+        case users, repos, orgs, branches
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+        var placeholder: String {
+            switch self {
+            case .users: "username"
+            case .repos: "owner/repo"
+            case .orgs: "org"
+            case .branches: "owner/repo@branch"
+            }
+        }
+    }
+    /// Follow lists plus the one exclusion list. Stored as one JSON blob.
+    struct Sources: Codable, Equatable {
+        var followUsers: [String] = []
+        var followRepos: [String] = []
+        var followOrgs: [String] = []
+        /// "owner/repo@branch" (US-029)
+        var followBranches: [String] = []
+        var hiddenRepos: [String] = []
+        var hiddenUsers: [String] = IgnoreRules.defaultHiddenUsers
+        /// login (lowercased) → user-chosen label for the section header. Empty means use GitHub's name.
+        var userLabels: [String: String] = [:]
+        /// PR id → nickname shown instead of the title (US-019). The real title stays in the tooltip.
+        var prAliases: [String: String] = [:]
+        /// PR id → "owner/repo#123 title", for individually hidden PRs (US-010). Label is for the Settings list.
+        var hiddenPRs: [String: String] = [:]
+
+        subscript(follow kind: SourceKind) -> [String] {
+            get {
+                switch kind {
+                case .users: followUsers
+                case .repos: followRepos
+                case .orgs: followOrgs
+                case .branches: followBranches
+                }
+            }
+            set {
+                switch kind {
+                case .users: followUsers = newValue
+                case .repos: followRepos = newValue
+                case .orgs: followOrgs = newValue
+                case .branches: followBranches = newValue
+                }
+            }
+        }
+
+        // Tolerate the short-lived ignoreRepos key and default hideBots to on.
+        init() {}
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            followUsers = try c.decodeIfPresent([String].self, forKey: .followUsers) ?? []
+            followRepos = try c.decodeIfPresent([String].self, forKey: .followRepos) ?? []
+            followOrgs = try c.decodeIfPresent([String].self, forKey: .followOrgs) ?? []
+            followBranches = try c.decodeIfPresent([String].self, forKey: .followBranches) ?? []
+            hiddenRepos = try c.decodeIfPresent([String].self, forKey: .hiddenRepos)
+                ?? (try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent([String].self, forKey: .ignoreRepos)) ?? []
+            // Older blobs had a hideBots Bool; map it onto the default bot list.
+            if let users = try c.decodeIfPresent([String].self, forKey: .hiddenUsers) {
+                hiddenUsers = users
+            } else {
+                let legacyBots = (try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .hideBots)) ?? true
+                hiddenUsers = legacyBots ? IgnoreRules.defaultHiddenUsers : []
+            }
+            userLabels = try c.decodeIfPresent([String: String].self, forKey: .userLabels) ?? [:]
+            prAliases = try c.decodeIfPresent([String: String].self, forKey: .prAliases) ?? [:]
+            hiddenPRs = try c.decodeIfPresent([String: String].self, forKey: .hiddenPRs) ?? [:]
+        }
+        private enum LegacyKeys: String, CodingKey { case ignoreRepos, hideBots }
+    }
+
+    private enum Key {
+        static let sources = "sources"
+        static let legacyHidden = "hiddenRepos"
+        static let watched = "watchedRefs"
+        static let pinned = "pinnedIDs"
+        static let all = [sources, watched, pinned]
+        static let showCount = Prefs.showCount
+        static let ghPath = Prefs.ghPath
+        static let housing = Prefs.housing
+        static let colorProfile = Prefs.colorProfile
+        static let collapsed = "collapsedSections"
+        static let mergedDays = "mergedDays"
+        static let branchCommits = "branchCommits"
+        static let sectionOrder = "sectionOrder"
+        static let tourSeen = "tourSeen"
+        static let rowActions = "rowActions"
+        static let rowActionsSeen = "rowActionsSeen"
+        static let sectionCounts = "sectionCounts"
+        static let agent = "agent"
+        static let agentCustom = "agentCustomCommand"
+        static let agentPermission = "agentPermissionMode"
+        static let agentReviewPermission = "agentReviewPermissionMode"
+        static let agentExtraArgs = "agentExtraArgs"
+        static let terminal = "terminal"
+        static let promptTemplate = "agentPrompt"
+        static let reviewTemplate = "agentReviewPrompt"
+        static let scanRoot = "repoScanRoot"        // pre-0.9, a single folder
+        static let scanRoots = "repoScanRoots"
+        static let repoPaths = "repoPaths"
+        static let primaryClick = "primaryClick"
+        static let stackOrder = "stackCopyOrder"
+        static let showQueues = "showQueues"
+        static let queueItems = "queueItems"
+        static let refreshSeconds = "refreshSeconds"
+        static let notifyReviews = "notifyReviews"
+        static let notifyComments = "notifyComments"
+        static let notifyActivityOn = "notifyActivityOn"
+        static let ignoreBotActivity = "ignoreBotActivity"
+        static let mutedAuthors = "mutedAuthors"
+    }
+
+
+    var sources: Sources { didSet { persistJSON(Key.sources, sources) } }
+    var watched: [PRRef] { didSet { persist(Key.watched, watched.map(\.key)) } }
+    var pinned: Set<String> { didSet { persist(Key.pinned, Array(pinned).sorted()) } }
+
+    /// Where `gh` lives, when it isn't somewhere obvious. Empty means "find it automatically".
+    var ghPath: String { didSet { defaults.set(ghPath, forKey: Key.ghPath) } }
+
+    // Appearance. Local only, not synced.
+    var showCount: Bool { didSet { defaults.set(showCount, forKey: Key.showCount) } }
+    var housing: Bool { didSet { defaults.set(housing, forKey: Key.housing) } }
+    var colorProfile: ColorProfile { didSet { defaults.set(colorProfile.rawValue, forKey: Key.colorProfile) } }
+    /// Recently-merged window in days (US-022). 0 = off. Local only.
+    var mergedDays: Int { didSet { defaults.set(mergedDays, forKey: Key.mergedDays) } }
+    // Agent launcher (US-025). Local only.
+    var agent: String { didSet { defaults.set(agent, forKey: Key.agent) } }
+    var agentCustomCommand: String { didSet { defaults.set(agentCustomCommand, forKey: Key.agentCustom) } }
+    /// Ids from the agent's `permissionModes`; an unknown id means no flag. One per job (US-036).
+    var agentPermissionMode: String { didSet { defaults.set(agentPermissionMode, forKey: Key.agentPermission) } }
+    var agentReviewPermissionMode: String { didSet { defaults.set(agentReviewPermissionMode, forKey: Key.agentReviewPermission) } }
+    var agentExtraArgs: String { didSet { defaults.set(agentExtraArgs, forKey: Key.agentExtraArgs) } }
+    var terminal: String { didSet { defaults.set(terminal, forKey: Key.terminal) } }
+    var promptTemplate: String { didSet { defaults.set(promptTemplate, forKey: Key.promptTemplate) } }
+    var reviewTemplate: String { didSet { defaults.set(reviewTemplate, forKey: Key.reviewTemplate) } }
+    /// Folders to look for git clones in. Projects rarely live under one tree, so this is a list.
+    var scanRoots: [String] { didSet { defaults.set(scanRoots, forKey: Key.scanRoots) } }
+    /// "owner/name" (lowercased) → local clone path.
+    var repoPaths: [String: String] { didSet { defaults.set(repoPaths, forKey: Key.repoPaths) } }
+
+    /// Show a section for each merge queue any visible PR is waiting in (US-041). Local only.
+    var showQueues: Bool { didSet { defaults.set(showQueues, forKey: Key.showQueues) } }
+    /// How many entries of each queue to list.
+    var queueItems: Int { didSet { defaults.set(queueItems, forKey: Key.queueItems) } }
+
+    /// Which end of a stack "Copy stack as Markdown" starts from.
+    enum StackOrder: String, CaseIterable, Identifiable {
+        case bottomFirst, topFirst
+        var id: String { rawValue }
+        var title: String { self == .bottomFirst ? "Bottom of the stack first" : "Top of the stack first" }
+    }
+    /// Local only.
+    var stackOrder: StackOrder { didSet { defaults.set(stackOrder.rawValue, forKey: Key.stackOrder) } }
+
+    /// Idle seconds between refreshes. 0 keeps the adaptive schedule, which is what most people want.
+    /// A chosen value still tightens while checks are running and still backs off near the rate limit.
+    enum RefreshRate: Int, CaseIterable, Identifiable {
+        case automatic = 0, halfMinute = 30, minute = 60, twoMinutes = 120, fiveMinutes = 300, quarterHour = 900
+        var id: Int { rawValue }
+        var title: String {
+            switch self {
+            case .automatic: "Automatically"
+            case .halfMinute: "Every 30 seconds"
+            case .minute: "Every minute"
+            case .twoMinutes: "Every 2 minutes"
+            case .fiveMinutes: "Every 5 minutes"
+            case .quarterHour: "Every 15 minutes"
+            }
+        }
+    }
+    /// Local only.
+    var refreshRate: RefreshRate { didSet { defaults.set(refreshRate.rawValue, forKey: Key.refreshSeconds) } }
+
+    /// What a single click on a PR row does; the other action moves to double-click (US-037).
+    enum PrimaryClick: String, CaseIterable, Identifiable {
+        case open, expand
+        var id: String { rawValue }
+        var title: String { self == .open ? "Opens it on GitHub" : "Shows its details" }
+    }
+    /// Local only.
+    var primaryClick: PrimaryClick { didSet { defaults.set(primaryClick.rawValue, forKey: Key.primaryClick) } }
+
+    enum SectionCounts: String, CaseIterable, Identifiable {
+        case attention, full, off
+        var id: String { rawValue }
+    }
+    /// What a collapsed header shows next to its title (US-018). Local only.
+    var sectionCounts: SectionCounts { didSet { defaults.set(sectionCounts.rawValue, forKey: Key.sectionCounts) } }
+
+    /// Which circular buttons an expanded row shows, in order (US-031). Local only.
+    var rowActions: [RowAction] { didSet { defaults.set(rowActions.map(\.rawValue), forKey: Key.rowActions) } }
+
+    // Review and comment notifications. Local only.
+    /// Tell me about new reviews (approved, changes requested, a review with a summary).
+    var notifyReviews: Bool { didSet { defaults.set(notifyReviews, forKey: Key.notifyReviews) } }
+    /// Tell me about new comments (conversation and inline replies).
+    var notifyComments: Bool { didSet { defaults.set(notifyComments, forKey: Key.notifyComments) } }
+    enum ActivityScope: String, CaseIterable, Identifiable {
+        case mine, everything
+        var id: String { rawValue }
+        var title: String { self == .mine ? "My pull requests" : "Every pull request in Stoplight" }
+    }
+    /// Whose PRs: only yours, or everything you follow and watch.
+    var notifyActivityOn: ActivityScope { didSet { defaults.set(notifyActivityOn.rawValue, forKey: Key.notifyActivityOn) } }
+    /// Skip reviews and comments from bots (GitHub apps, "[bot]" accounts).
+    var ignoreBotActivity: Bool { didSet { defaults.set(ignoreBotActivity, forKey: Key.ignoreBotActivity) } }
+    /// People and bots whose reviews and comments never notify you.
+    var mutedAuthors: [String] { didSet { defaults.set(mutedAuthors, forKey: Key.mutedAuthors) } }
+
+    /// Adds a login to the mute list: trims, strips "@", checks it's a login, dedupes.
+    @discardableResult
+    func mute(_ raw: String) -> AddResult {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("@") { value.removeFirst() }
+        guard Filters.isValidAuthor(value) else { return .invalid }
+        if mutedAuthors.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) { return .duplicate }
+        mutedAuthors.append(value)
+        return .added
+    }
+
+    /// What the notification rules are right now, for `login` (you).
+    func activityRules(login: String?) -> ActivityRules {
+        guard NotificationService.mode != .off else { return .off }
+        return ActivityRules(reviews: notifyReviews, comments: notifyComments, ignoreBots: ignoreBotActivity,
+                             ignoredAuthors: mutedAuthors, onlyAuthor: notifyActivityOn == .mine ? (login ?? "") : nil)
+    }
+
+    /// First-run tour dismissed (US-024). Local only.
+    var tourSeen: Bool { didSet { defaults.set(tourSeen, forKey: Key.tourSeen) } }
+    /// How many recent commits each followed branch shows (US-035). 1 = just the latest.
+    var branchCommits: Int { didSet { defaults.set(branchCommits, forKey: Key.branchCommits) } }
+    /// Section ids in the user's drag order (US-023). Ids not listed keep their default relative order after these.
+    var sectionOrder: [String] { didSet { defaults.set(sectionOrder, forKey: Key.sectionOrder) } }
+    /// Popover section titles the user has collapsed. Local only.
+    var collapsedSections: Set<String> { didSet { defaults.set(Array(collapsedSections).sorted(), forKey: Key.collapsed) } }
+
+    private let defaults: UserDefaults
+    private let cloud: NSUbiquitousKeyValueStore?
+    private var applyingRemote = false
+    private var observer: (any NSObjectProtocol)?
+
+    init(defaults: UserDefaults = .standard, cloud: NSUbiquitousKeyValueStore? = nil) {
+        self.defaults = defaults
+        self.cloud = cloud
+        cloud?.synchronize()
+        func load(_ key: String) -> [String] {
+            cloud?.array(forKey: key) as? [String] ?? defaults.stringArray(forKey: key) ?? []
+        }
+        func loadJSON<T: Decodable>(_ key: String, _ type: T.Type) -> T? {
+            let data = (cloud?.data(forKey: key)) ?? defaults.data(forKey: key)
+            return data.flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+        }
+        var src = loadJSON(Key.sources, Sources.self) ?? Sources()
+        // Migrate the pre-Sources "hiddenRepos" list once.
+        if src == Sources(), let legacy = defaults.stringArray(forKey: Key.legacyHidden), !legacy.isEmpty {
+            src.hiddenRepos = legacy
+            defaults.removeObject(forKey: Key.legacyHidden)
+        }
+        sources = src
+        watched = load(Key.watched).compactMap(PRRef.init(key:))
+        pinned = Set(load(Key.pinned))
+        ghPath = defaults.string(forKey: Key.ghPath) ?? ""
+        showCount = defaults.bool(forKey: Key.showCount)
+        housing = defaults.bool(forKey: Key.housing)
+        colorProfile = defaults.string(forKey: Key.colorProfile).flatMap(ColorProfile.init(rawValue:)) ?? .standard
+        // Merged starts collapsed: a one-line count until you ask for it.
+        collapsedSections = Set(defaults.stringArray(forKey: Key.collapsed) ?? ["Merged"])
+        mergedDays = defaults.object(forKey: Key.mergedDays) == nil ? 1 : defaults.integer(forKey: Key.mergedDays)
+        sectionOrder = defaults.stringArray(forKey: Key.sectionOrder) ?? []
+        branchCommits = defaults.object(forKey: Key.branchCommits) == nil ? 1 : max(1, min(10, defaults.integer(forKey: Key.branchCommits)))
+        tourSeen = defaults.bool(forKey: Key.tourSeen)
+        // Buttons added in a later version join an existing config once, so an upgrade never hides a new
+        // action; ones the user actually unchecked stay off because they were already "seen".
+        if var saved = defaults.stringArray(forKey: Key.rowActions)?.compactMap(RowAction.init(rawValue:)) {
+            let seen = Set(defaults.stringArray(forKey: Key.rowActionsSeen) ?? [])
+            saved += RowAction.defaultOrder.filter { !seen.contains($0.rawValue) && !saved.contains($0) }
+            rowActions = saved
+            defaults.set(saved.map(\.rawValue), forKey: Key.rowActions)
+        } else {
+            rowActions = RowAction.defaultOrder
+        }
+        defaults.set(RowAction.allCases.map(\.rawValue), forKey: Key.rowActionsSeen)
+        sectionCounts = SectionCounts(rawValue: defaults.string(forKey: Key.sectionCounts) ?? "") ?? .off
+        primaryClick = PrimaryClick(rawValue: defaults.string(forKey: Key.primaryClick) ?? "") ?? .open
+        refreshRate = RefreshRate(rawValue: defaults.integer(forKey: Key.refreshSeconds)) ?? .automatic
+        stackOrder = StackOrder(rawValue: defaults.string(forKey: Key.stackOrder) ?? "") ?? .bottomFirst
+        showQueues = defaults.object(forKey: Key.showQueues) as? Bool ?? true
+        queueItems = max(1, defaults.object(forKey: Key.queueItems) as? Int ?? 10)
+        agent = defaults.string(forKey: Key.agent) ?? ""
+        agentCustomCommand = defaults.string(forKey: Key.agentCustom) ?? "my-agent {prompt}"
+        agentPermissionMode = defaults.string(forKey: Key.agentPermission) ?? "ask"
+        // Review defaults to plan: the review prompt asks for findings, not edits.
+        agentReviewPermissionMode = defaults.string(forKey: Key.agentReviewPermission) ?? "plan"
+        agentExtraArgs = defaults.string(forKey: Key.agentExtraArgs) ?? ""
+        terminal = defaults.string(forKey: Key.terminal) ?? "terminal"
+        promptTemplate = defaults.string(forKey: Key.promptTemplate) ?? AgentLauncher.defaultPrompt
+        reviewTemplate = defaults.string(forKey: Key.reviewTemplate) ?? AgentLauncher.defaultReviewPrompt
+        // Carry the old single folder over, then fall back to ~/dev.
+        scanRoots = defaults.stringArray(forKey: Key.scanRoots)
+            ?? defaults.string(forKey: Key.scanRoot).map { [$0] }
+            ?? [NSHomeDirectory() + "/dev"]
+        repoPaths = (defaults.dictionary(forKey: Key.repoPaths) as? [String: String]) ?? [:]
+        notifyReviews = defaults.object(forKey: Key.notifyReviews) as? Bool ?? true
+        notifyComments = defaults.object(forKey: Key.notifyComments) as? Bool ?? true
+        notifyActivityOn = ActivityScope(rawValue: defaults.string(forKey: Key.notifyActivityOn) ?? "") ?? .mine
+        ignoreBotActivity = defaults.object(forKey: Key.ignoreBotActivity) as? Bool ?? true
+        mutedAuthors = defaults.stringArray(forKey: Key.mutedAuthors) ?? []
+
+        if let cloud {
+            observer = NotificationCenter.default.addObserver(
+                forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: cloud, queue: .main
+            ) { [weak self] note in
+                let changed = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? Key.all
+                MainActor.assumeIsolated { self?.applyRemote(keys: changed) }
+            }
+        }
+    }
+
+    // MARK: Derived
+
+    var ignoreRules: IgnoreRules {
+        IgnoreRules(users: Set(sources.hiddenUsers), repos: Set(sources.hiddenRepos))
+    }
+
+    var followedBranches: [BranchRef] { sources.followBranches.compactMap(BranchRef.init(spec:)) }
+
+    /// Searches to run in addition to `.authored`, in display order.
+    var followQueries: [PRQuery] {
+        sources.followUsers.map(PRQuery.author) + sources.followRepos.map(PRQuery.repo) + sources.followOrgs.map(PRQuery.org)
+    }
+
+    func isFollowing(user: String) -> Bool {
+        sources.followUsers.contains { $0.caseInsensitiveCompare(user) == .orderedSame }
+    }
+
+    // MARK: Sources editing
+
+    /// Normalizes a typed value (trims, strips a leading @) and validates it for the given list.
+    static func normalize(_ raw: String, kind: SourceKind, hideList: Bool) -> String? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("@") { value.removeFirst() }
+        let valid: Bool = switch kind {
+        case .repos: Filters.isValidRepo(value)
+        case .users: hideList ? Filters.isValidAuthor(value) : Filters.isValidLogin(value)
+        case .orgs: Filters.isValidLogin(value)
+        case .branches: BranchRef(spec: value) != nil
+        }
+        return valid ? value : nil
+    }
+
+    enum AddResult { case added, duplicate, invalid }
+
+    /// Validates, normalizes (strips a leading @), dedupes case-insensitively.
+    @discardableResult
+    func follow(_ raw: String, kind: SourceKind) -> AddResult {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("@") { value.removeFirst() }
+        let valid = kind == .repos ? Filters.isValidRepo(value) : Filters.isValidLogin(value)
+        guard valid else { return .invalid }
+        if sources[follow: kind].contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) { return .duplicate }
+        sources[follow: kind].append(value)
+        return .added
+    }
+
+    func unfollow(_ value: String, kind: SourceKind) {
+        sources[follow: kind].removeAll { $0.caseInsensitiveCompare(value) == .orderedSame }
+        if kind == .users { sources.userLabels[value.lowercased()] = nil }
+    }
+
+    func label(for login: String) -> String? {
+        let l = sources.userLabels[login.lowercased()]?.trimmingCharacters(in: .whitespaces)
+        return (l?.isEmpty ?? true) ? nil : l
+    }
+
+    func setLabel(_ label: String, for login: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespaces)
+        sources.userLabels[login.lowercased()] = trimmed.isEmpty ? nil : trimmed
+    }
+
+    @discardableResult
+    func hide(repo raw: String) -> AddResult {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Filters.isValidRepo(value) else { return .invalid }
+        if sources.hiddenRepos.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) { return .duplicate }
+        sources.hiddenRepos.append(value)
+        return .added
+    }
+
+    func unhide(repo value: String) {
+        sources.hiddenRepos.removeAll { $0.caseInsensitiveCompare(value) == .orderedSame }
+    }
+
+    /// Drag `moving` onto `target`. Dropping on a header below it lands after that header; above it, before.
+    func moveSection(_ moving: String, onto target: String, currentOrder: [String]) {
+        guard moving != target else { return }
+        var order = currentOrder
+        guard let from = order.firstIndex(of: moving), let to = order.firstIndex(of: target) else { return }
+        order.remove(at: from)
+        // After the removal, `to` points just past the target when moving down (lands after it),
+        // and at the target when moving up (lands before it). Exactly the list-reorder feel.
+        order.insert(moving, at: min(to, order.count))
+        sectionOrder = order
+    }
+
+    func toggleCollapsed(_ section: String) {
+        if collapsedSections.contains(section) { collapsedSections.remove(section) } else { collapsedSections.insert(section) }
+    }
+
+    func hide(pr: PullRequest) { sources.hiddenPRs[pr.id] = "\(pr.shortRef) \(pr.title)" }
+    func unhide(prID: String) { sources.hiddenPRs[prID] = nil }
+    func isHidden(prID: String) -> Bool { sources.hiddenPRs[prID] != nil }
+
+    func alias(for prID: String) -> String? {
+        let a = sources.prAliases[prID]?.trimmingCharacters(in: .whitespaces)
+        return (a?.isEmpty ?? true) ? nil : a
+    }
+
+    func setAlias(_ alias: String, for prID: String) {
+        let trimmed = alias.trimmingCharacters(in: .whitespaces)
+        sources.prAliases[prID] = trimmed.isEmpty ? nil : trimmed
+    }
+
+    // MARK: Pins / watches
+
+    func togglePin(_ id: String) {
+        if pinned.contains(id) { pinned.remove(id) } else { pinned.insert(id) }
+    }
+
+    /// Returns false if already watched.
+    @discardableResult
+    func watch(_ ref: PRRef) -> Bool {
+        guard !watched.contains(ref) else { return false }
+        watched.append(ref)
+        return true
+    }
+
+    func unwatch(_ ref: PRRef) { watched.removeAll { $0 == ref } }
+
+    // MARK: Persistence
+
+    private func persist(_ key: String, _ value: [String]) {
+        defaults.set(value, forKey: key)
+        guard !applyingRemote, let cloud else { return }
+        cloud.set(value, forKey: key)
+    }
+
+    private func persistJSON<T: Encodable>(_ key: String, _ value: T) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: key)
+        guard !applyingRemote, let cloud else { return }
+        cloud.set(data, forKey: key)
+    }
+
+    /// Another Mac changed something. Take iCloud's value; write-through to defaults only.
+    private func applyRemote(keys: [String]) {
+        guard let cloud else { return }
+        applyingRemote = true
+        defer { applyingRemote = false }
+        for key in keys {
+            switch key {
+            case Key.sources:
+                if let d = cloud.data(forKey: key), let s = try? JSONDecoder().decode(Sources.self, from: d) { sources = s }
+            case Key.watched: watched = (cloud.array(forKey: key) as? [String] ?? []).compactMap(PRRef.init(key:))
+            case Key.pinned: pinned = Set(cloud.array(forKey: key) as? [String] ?? [])
+            default: break
+            }
+        }
+    }
+}

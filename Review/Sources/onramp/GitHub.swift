@@ -1,0 +1,465 @@
+import AppKit
+
+/// Pull requests through the GitHub CLI (`gh`), using your existing login.
+/// Writes: merging (here) and review comments (GitHubReviews.swift).
+enum GitHub {
+    struct Person: Decodable { let login: String }
+    struct Label: Decodable { let name: String }
+
+    struct PRSummary: Decodable {
+        let number: Int
+        let title: String
+        let author: Person
+        let headRefName: String
+        let baseRefName: String
+        let updatedAt: Date
+        let isDraft: Bool
+        let url: String
+    }
+
+    struct PR: Codable {
+        let number: Int
+        let title: String
+        let body: String
+        let author: String
+        let headRefName: String
+        let baseRefName: String
+        let url: String
+        let state: String
+        let isDraft: Bool
+        let additions: Int
+        let deletions: Int
+        let changedFiles: Int
+        let labels: [String]
+    }
+
+    enum Filter: CaseIterable {
+        case reviewRequested, mine, open
+        var title: String {
+            switch self {
+            case .reviewRequested: "Review requested"
+            case .mine: "Mine"
+            case .open: "All open"
+            }
+        }
+        var args: [String] {
+            switch self {
+            case .reviewRequested: ["--search", "review-requested:@me"]
+            case .mine: ["--author", "@me"]
+            case .open: []
+            }
+        }
+    }
+
+    struct Failure: Error, CustomStringConvertible {
+        let description: String
+        var notFound = false
+    }
+
+    /// `gh_path` from settings.json (set by Style); "" = find it.
+    nonisolated(unsafe) static var configuredPath = ""
+    nonisolated(unsafe) private static var found: String?
+
+    /// Where gh is: your setting, the usual install spots, then your shell
+    /// (interactive, so ~/.zshrc PATH changes count).
+    static func ghPath() -> String? {
+        let fm = FileManager.default
+        let setting = (configuredPath as NSString).expandingTildeInPath
+        if !setting.isEmpty { return fm.isExecutableFile(atPath: setting) ? setting : nil }
+        if let found, fm.isExecutableFile(atPath: found) { return found }
+        let home = fm.homeDirectoryForCurrentUser.path
+        let spots = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "\(home)/.local/bin/gh", "\(home)/bin/gh", "/usr/bin/gh",
+                     "/opt/local/bin/gh", "\(home)/.nix-profile/bin/gh", "/run/current-system/sw/bin/gh"]
+        if let hit = spots.first(where: fm.isExecutableFile(atPath:)) { found = hit; return hit }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-ilc", "command -v gh"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        p.standardInput = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }
+        p.waitUntilExit()
+        let path = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .split(separator: "\n").last.map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+        guard p.terminationStatus == 0, path.hasPrefix("/"), fm.isExecutableFile(atPath: path) else { return nil }
+        found = path
+        return path
+    }
+
+    /// Run gh in `repo`, returning stdout.
+    /// Your gh token, read once (`gh auth token`) and kept in memory: every gh call gets it as
+    /// GH_TOKEN, so gh doesn't go to the Keychain each time (which can fail from an app).
+    nonisolated(unsafe) private static var token: String?
+    private static let tokenLock = NSLock()
+
+    private static func cachedToken(gh path: String, refresh: Bool = false) -> String? {
+        tokenLock.lock(); defer { tokenLock.unlock() }
+        if let token, !refresh { return token }
+        guard let r = try? run(path, ["auth", "token"], repo: NSHomeDirectory(), token: nil), r.status == 0 else { token = nil; return nil }
+        let t = String(data: r.out, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        token = t.isEmpty ? nil : t
+        return token
+    }
+
+    private static func run(_ path: String, _ args: [String], repo: String, token: String?) throws -> (status: Int32, out: Data, err: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        var env = ProcessInfo.processInfo.environment // apps launched from the Dock get a bare PATH; gh runs git
+        env["PATH"] = ([(path as NSString).deletingLastPathComponent, "/opt/homebrew/bin", "/usr/local/bin"] + (env["PATH"] ?? "/usr/bin:/bin").split(separator: ":").map(String.init)).joined(separator: ":")
+        if env["HOME"] == nil { env["HOME"] = NSHomeDirectory() } // gh finds its login under ~/.config/gh
+        if let token { env["GH_TOKEN"] = token }
+        p.environment = env
+        p.currentDirectoryURL = URL(fileURLWithPath: repo)
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        p.standardInput = FileHandle.nullDevice
+        do { try p.run() } catch { throw Failure(description: "couldn't run gh: \(error.localizedDescription)") }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        let errText = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        p.waitUntilExit()
+        return (p.terminationStatus, data, errText)
+    }
+
+    static func gh(_ args: [String], repo: String) throws -> Data {
+        guard let path = ghPath() else {
+            throw Failure(description: configuredPath.isEmpty
+                ? "Couldn't find the GitHub CLI (gh). Install it (brew install gh), or show Onramp where it is: Onramp → Locate GitHub CLI…"
+                : "gh_path in settings.json (\(configuredPath)) isn't a program that runs. Onramp → Locate GitHub CLI… to pick it again.", notFound: true)
+        }
+        var r = try run(path, args, repo: repo, token: cachedToken(gh: path))
+        let noGitHubRemote = r.err.contains("none of the git remotes") || r.err.contains("no git remotes")
+        if r.status != 0, !noGitHubRemote, r.err.contains("gh auth login") || r.err.contains("HTTP 401") { // token gone stale, or the Keychain said no: once more, fresh
+            r = try run(path, args, repo: repo, token: cachedToken(gh: path, refresh: true))
+        }
+        guard r.status == 0 else {
+            let detail = r.err.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\n").filter { !$0.isEmpty }
+            if noGitHubRemote {
+                throw Failure(description: "This repository isn't on GitHub (no remote points to github.com), so there are no pull requests to show.")
+            }
+            if r.err.contains("gh auth login") {
+                throw Failure(description: "GitHub CLI isn't signed in. Run gh auth login in Terminal, then try again.")
+            }
+            throw Failure(description: detail.prefix(2).joined(separator: " ").isEmpty ? "gh failed" : detail.prefix(2).joined(separator: " "))
+        }
+        return r.out
+    }
+
+    static var decoder: JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }
+
+    static func list(repo: String, filter: Filter) throws -> [PRSummary] {
+        let data = try gh(["pr", "list", "--limit", "50", "--json", "number,title,author,headRefName,baseRefName,updatedAt,isDraft,url"] + filter.args, repo: repo)
+        return try decoder.decode([PRSummary].self, from: data)
+    }
+
+    static func view(repo: String, number: Int) throws -> PR {
+        struct Raw: Decodable {
+            let number: Int, title: String, body: String, author: Person, headRefName: String, baseRefName: String
+            let url: String, state: String, isDraft: Bool, additions: Int, deletions: Int, changedFiles: Int, labels: [Label]
+        }
+        let data = try gh(["pr", "view", String(number), "--json",
+                           "number,title,body,author,headRefName,baseRefName,url,state,isDraft,additions,deletions,changedFiles,labels"], repo: repo)
+        let r = try decoder.decode(Raw.self, from: data)
+        return PR(number: r.number, title: r.title, body: r.body, author: r.author.login, headRefName: r.headRefName, baseRefName: r.baseRefName,
+                  url: r.url, state: r.state, isDraft: r.isDraft, additions: r.additions, deletions: r.deletions, changedFiles: r.changedFiles,
+                  labels: r.labels.map(\.name))
+    }
+
+    // MARK: The PR sidebar
+
+    enum Checks { case none, passing, failing, pending }
+    enum Review { case none, required, approved, changesRequested }
+
+    /// One open PR with what the sidebar filters on.
+    struct PRItem {
+        let number: Int
+        let title: String
+        let author: String
+        let headRefName: String
+        let baseRefName: String
+        let updatedAt: Date
+        let isDraft: Bool
+        let additions: Int
+        let deletions: Int
+        let review: Review
+        let requested: [String] // logins (and team names) asked to review
+        let checks: Checks
+        let labels: [String]
+    }
+
+    /// Open PRs, most recently updated first, a page at a time (`onPage` gets each
+    /// page as it lands, so the list fills in while the rest load). One big
+    /// request for 100 PRs with every check run timed out (504) on busy repos, so
+    /// pages are small, carry only each PR's overall check state, and shrink and
+    /// retry if GitHub still times out.
+    static func listAll(repo: String, max: Int = 100, onPage: ([PRItem]) -> Void = { _ in }) throws -> [PRItem] {
+        let parts = try slug(repo: repo).split(separator: "/").map(String.init)
+        guard parts.count == 2 else { throw Failure(description: "Couldn't tell which GitHub repo this is") }
+        let query = """
+        query($owner: String!, $name: String!, $first: Int!, $after: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequests(states: OPEN, first: $first, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                number title author { login } headRefName baseRefName updatedAt isDraft additions deletions reviewDecision
+                reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
+                labels(first: 10) { nodes { name } }
+                commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+              }
+            }
+          }
+        }
+        """
+        struct Reviewer: Decodable { let login: String?; let name: String? }
+        struct Request: Decodable { let requestedReviewer: Reviewer? }
+        struct Rollup: Decodable { let state: String }
+        struct Commit: Decodable { let statusCheckRollup: Rollup? }
+        struct CommitNode: Decodable { let commit: Commit }
+        struct Nodes<T: Decodable>: Decodable { let nodes: [T] }
+        struct Raw: Decodable {
+            let number: Int, title: String, author: Person?, headRefName: String, baseRefName: String, updatedAt: Date, isDraft: Bool
+            let additions: Int, deletions: Int, reviewDecision: String?
+            let reviewRequests: Nodes<Request>, labels: Nodes<Label>, commits: Nodes<CommitNode>
+        }
+        struct PageInfo: Decodable { let hasNextPage: Bool; let endCursor: String? }
+        struct Page: Decodable { let pageInfo: PageInfo; let nodes: [Raw] }
+        struct Repo: Decodable { let pullRequests: Page }
+        struct DataField: Decodable { let repository: Repo }
+        struct Response: Decodable { let data: DataField }
+
+        var all: [PRItem] = []
+        var after: String?
+        var size = 10 // a small first page paints fast (~1.7 s on a busy repo); then bigger ones
+        while all.count < max {
+            var args = ["api", "graphql", "-f", "query=\(query)", "-f", "owner=\(parts[0])", "-f", "name=\(parts[1])", "-F", "first=\(min(size, max - all.count))"]
+            if let after { args += ["-f", "after=\(after)"] }
+            let data: Data
+            do {
+                data = try gh(args, repo: repo)
+            } catch let e as Failure where size > 5 && (e.description.contains("502") || e.description.contains("504") || e.description.lowercased().contains("timeout")) {
+                size = Swift.max(5, size / 2) // GitHub gave up on this page: ask for less
+                continue
+            }
+            let page = try decoder.decode(Response.self, from: data).data.repository.pullRequests
+            let items = page.nodes.map { r -> PRItem in
+                let checks: Checks = switch r.commits.nodes.first?.commit.statusCheckRollup?.state ?? "" {
+                case "SUCCESS": .passing
+                case "FAILURE", "ERROR": .failing
+                case "PENDING", "EXPECTED": .pending
+                default: .none
+                }
+                let review: Review = switch r.reviewDecision ?? "" {
+                case "APPROVED": .approved
+                case "CHANGES_REQUESTED": .changesRequested
+                case "REVIEW_REQUIRED": .required
+                default: .none
+                }
+                return PRItem(number: r.number, title: r.title, author: r.author?.login ?? "ghost", headRefName: r.headRefName, baseRefName: r.baseRefName,
+                              updatedAt: r.updatedAt, isDraft: r.isDraft, additions: r.additions, deletions: r.deletions, review: review,
+                              requested: r.reviewRequests.nodes.compactMap { $0.requestedReviewer.flatMap { $0.login ?? $0.name } },
+                              checks: checks, labels: r.labels.nodes.map(\.name))
+            }
+            all += items
+            onPage(all)
+            size = Swift.max(size, 30)
+            guard page.pageInfo.hasNextPage, let next = page.pageInfo.endCursor else { break }
+            after = next
+        }
+        return all
+    }
+
+    /// Your GitHub login (for "me" filters), asked once.
+    nonisolated(unsafe) private static var login: String?
+    static func myLogin(repo: String) -> String? {
+        if let login { return login }
+        let data = try? gh(["api", "user", "-q", ".login"], repo: repo)
+        login = data.flatMap { String(data: $0, encoding: .utf8) }?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return login
+    }
+
+    // MARK: Merging your own PRs
+
+    enum MergeMethod: String, CaseIterable { case squash, merge, rebase
+        var title: String { switch self { case .squash: "Squash and merge"; case .merge: "Merge commit"; case .rebase: "Rebase and merge" } }
+    }
+
+    /// What the merge panel needs: can it merge, and how.
+    struct MergeInfo {
+        let author: String
+        let isMine: Bool
+        let state: String            // OPEN / MERGED / CLOSED
+        let isDraft: Bool
+        let mergeable: String        // MERGEABLE / CONFLICTING / UNKNOWN
+        let mergeState: String       // CLEAN / BLOCKED / BEHIND / UNSTABLE / DIRTY / …
+        let review: Review
+        let checks: Checks
+        let methods: [MergeMethod]   // allowed by the repo
+        let deleteBranchDefault: Bool
+    }
+
+    static func mergeInfo(repo: String, number: Int) throws -> MergeInfo {
+        struct Check: Decodable { let status: String?; let conclusion: String?; let state: String? }
+        struct PRRaw: Decodable {
+            let author: Person, state: String, isDraft: Bool, mergeable: String, mergeStateStatus: String
+            let reviewDecision: String?, statusCheckRollup: [Check]?
+        }
+        struct RepoRaw: Decodable { let squashMergeAllowed: Bool, mergeCommitAllowed: Bool, rebaseMergeAllowed: Bool, deleteBranchOnMerge: Bool }
+        let pr = try decoder.decode(PRRaw.self, from: gh(["pr", "view", String(number), "--json",
+                                                         "author,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"], repo: repo))
+        let r = try decoder.decode(RepoRaw.self, from: gh(["repo", "view", "--json", "squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge"], repo: repo))
+        let all = pr.statusCheckRollup ?? []
+        let bad = ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"]
+        let checks: Checks = all.isEmpty ? .none
+            : all.contains(where: { bad.contains($0.conclusion ?? "") || bad.contains($0.state ?? "") }) ? .failing
+            : all.contains(where: { ($0.status.map { $0 != "COMPLETED" } ?? false) || $0.state == "PENDING" }) ? .pending : .passing
+        let review: Review = switch pr.reviewDecision ?? "" {
+        case "APPROVED": .approved
+        case "CHANGES_REQUESTED": .changesRequested
+        case "REVIEW_REQUIRED": .required
+        default: .none
+        }
+        var methods: [MergeMethod] = []
+        if r.squashMergeAllowed { methods.append(.squash) }
+        if r.mergeCommitAllowed { methods.append(.merge) }
+        if r.rebaseMergeAllowed { methods.append(.rebase) }
+        return MergeInfo(author: pr.author.login, isMine: pr.author.login == myLogin(repo: repo), state: pr.state, isDraft: pr.isDraft,
+                         mergeable: pr.mergeable, mergeState: pr.mergeStateStatus, review: review, checks: checks,
+                         methods: methods, deleteBranchDefault: r.deleteBranchOnMerge)
+    }
+
+    /// Switch the repo to the PR's branch (creating it locally if needed). Fails, with git's reason, if your changes are in the way.
+    static func checkout(repo: String, number: Int) throws {
+        _ = try gh(["pr", "checkout", String(number)], repo: repo)
+    }
+
+    /// Merge on GitHub. With `deleteBranch`, gh also deletes the branch
+    /// (and, if you're on it locally, switches you to the base branch).
+    static func merge(repo: String, number: Int, method: MergeMethod, deleteBranch: Bool) throws {
+        _ = try gh(["pr", "merge", String(number), "--\(method.rawValue)"] + (deleteBranch ? ["--delete-branch"] : []), repo: repo)
+    }
+
+    // MARK: CI failures → review threads
+
+    nonisolated(unsafe) private static var slugs: [String: String] = [:]
+
+    /// "owner/name" of the repo's GitHub remote.
+    static func slug(repo: String) throws -> String {
+        if let s = slugs[repo] { return s }
+        let s = String(decoding: try gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], repo: repo), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        slugs[repo] = s
+        return s
+    }
+
+    /// Failing check runs' annotations on commit `sha`, and whether every check has finished.
+    static func ciFindings(repo: String, sha: String) throws -> (findings: [CiFinding], complete: Bool) {
+        struct Runs: Decodable { let check_runs: [Run] }
+        struct Run: Decodable { let id: Int; let name: String; let status: String; let conclusion: String?; let output: Output }
+        struct Output: Decodable { let annotations_count: Int }
+        struct Annotation: Decodable { let path: String; let start_line: Int; let annotation_level: String; let title: String?; let message: String }
+        let s = try slug(repo: repo)
+        let runs = try JSONDecoder().decode(Runs.self, from: gh(["api", "repos/\(s)/commits/\(sha)/check-runs?per_page=100"], repo: repo)).check_runs
+        let complete = runs.allSatisfy { $0.status == "completed" }
+        let failing = runs.filter { ["failure", "timed_out", "action_required"].contains($0.conclusion ?? "") && $0.output.annotations_count > 0 }
+        var findings: [CiFinding] = []
+        var texts: [String: String?] = [:]
+        for run in failing.prefix(10) {
+            let notes = try JSONDecoder().decode([Annotation].self, from: gh(["api", "repos/\(s)/check-runs/\(run.id)/annotations?per_page=100"], repo: repo))
+            for a in notes where a.annotation_level != "notice" {
+                if texts[a.path] == nil { texts[a.path] = fileAt(repoRoot: repo, rev: sha, path: a.path) }
+                guard let text = texts[a.path] ?? nil, a.start_line >= 1 else { continue } // not a file in the repo (e.g. ".github")
+                findings.append(CiFinding(check: run.name, path: a.path, line: UInt32(a.start_line - 1), text: text,
+                                          level: a.annotation_level, title: a.title ?? "", message: a.message))
+            }
+        }
+        return (findings, complete)
+    }
+
+    /// "123", "#123" or a PR URL → 123.
+    static func number(from text: String) -> Int? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if let n = Int(t.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) { return n }
+        if let r = t.range(of: #"/pull/(\d+)"#, options: .regularExpression) {
+            return Int(t[r].dropFirst("/pull/".count))
+        }
+        return nil
+    }
+
+    // MARK: Cache (the description bar reads it without calling gh)
+
+    private static func cacheURL(repo: String, number: Int) -> URL? {
+        (try? commentsPath(repoRoot: repo)).map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("pr-\(number).json") }
+    }
+
+    static func cache(_ pr: PR, repo: String) {
+        guard let url = cacheURL(repo: repo, number: pr.number), let data = try? JSONEncoder().encode(pr) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func cached(repo: String, number: Int) -> PR? {
+        cacheURL(repo: repo, number: number).flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(PR.self, from: $0) }
+    }
+
+    /// Fetch a PR (read-only: a private ref, no checkout). The tab then points its review at it.
+    /// `step` says what's happening, for the loading state ("Fetching its commits…").
+    static func fetch(repo: String, number: Int, step: (String) -> Void = { _ in }) throws -> PR {
+        let pr = try view(repo: repo, number: number)
+        step(pr.title.isEmpty ? "Fetching its commits…" : "Fetching the commits for \u{201C}\(pr.title)\u{201D}…")
+        try fetchPullRequest(repoRoot: repo, remote: "origin", number: UInt32(number), baseBranch: pr.baseRefName)
+        cache(pr, repo: repo)
+        RecentPRs.add(number, title: pr.title, repo: repo)
+        return pr
+    }
+}
+
+/// PRs opened recently in a repo, for the Changes menu.
+enum RecentPRs {
+    private static func key(_ repo: String) -> String { "onramp.recentPRs." + repo }
+
+    static func list(repo: String) -> [(number: Int, title: String)] {
+        (UserDefaults.standard.array(forKey: key(repo)) as? [[String: Any]] ?? []).compactMap { d in
+            guard let n = d["n"] as? Int, let t = d["t"] as? String else { return nil }
+            return (n, t)
+        }
+    }
+
+    static func add(_ number: Int, title: String, repo: String) {
+        let rest = list(repo: repo).filter { $0.number != number }.prefix(7).map { ["n": $0.number, "t": $0.title] as [String: Any] }
+        UserDefaults.standard.set([["n": number, "t": title]] + rest, forKey: key(repo))
+    }
+}
+
+/// Where gh is, for when it isn't anywhere Onramp looks: saved as gh_path in settings.json.
+@MainActor
+enum GitHubCLI {
+    /// Pick the gh binary (a sheet on `window`, else a panel). `done` runs once it's saved.
+    static func choose(for window: NSWindow?, done: @escaping () -> Void = {}) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.showsHiddenFiles = true // ~/.local/bin and friends
+        panel.treatsFilePackagesAsDirectories = true
+        panel.message = "Where is the GitHub CLI (gh)? Tip: run `which gh` in Terminal. ⇧⌘G lets you type a path."
+        let current = GitHub.ghPath()
+        panel.directoryURL = URL(fileURLWithPath: current.map { ($0 as NSString).deletingLastPathComponent } ?? "/opt/homebrew/bin")
+        let finish = { (response: NSApplication.ModalResponse) in
+            guard response == .OK, let url = panel.url else { return }
+            guard FileManager.default.isExecutableFile(atPath: url.path) else {
+                let alert = NSAlert()
+                alert.messageText = "That isn't a program"
+                alert.informativeText = "\(url.path) can't be run. Pick the gh file itself (for example /opt/homebrew/bin/gh)."
+                alert.runModal()
+                return
+            }
+            Style.shared.update { $0.ghPath = url.path }
+            done()
+        }
+        if let window { panel.beginSheetModal(for: window) { r in MainActor.assumeIsolated { finish(r) } } } else { finish(panel.runModal()) }
+    }
+}

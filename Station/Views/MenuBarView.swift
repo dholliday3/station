@@ -1,0 +1,917 @@
+import SwiftUI
+import StoplightCore
+
+/// US-005. 360pt wide, scrolls past 480pt, list + footer, nothing else.
+/// Sections (US-010/011/012): Pinned, Mine, Watching. Headers only render when non-empty.
+struct MenuBarView: View {
+    @Bindable var model: AppModel
+    @FocusState private var watchFieldFocused: Bool
+
+    /// Tour shows once the panel has something real to point at.
+    private var showTour: Bool {
+        if case .signedIn = model.auth, !model.prefs.tourSeen, model.lastRefresh != nil { return true }
+        return false
+    }
+
+    @State private var topHeight: CGFloat = 0
+    @State private var midHeight: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
+    private func report() {
+        let h = topHeight + midHeight + footerHeight + 2 /* dividers */
+        if abs(model.chromeHeight - h) > 0.5 { model.chromeHeight = h }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Real HStack, not overlays: DragHandle is an AppKit view and would swallow clicks anywhere
+            // it covers, so it gets the middle only and the buttons keep their own space.
+            HStack(spacing: 4) {
+                Button { model.isSearching.toggle(); if !model.isSearching { model.searchText = "" } } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(model.isSearching || !model.searchText.isEmpty ? Color.accentColor : .secondary)
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help("Search (⌘L)")
+
+                Capsule().fill(.quaternary).frame(width: 36, height: 4)
+                    .frame(maxWidth: .infinity, minHeight: 22)
+                    .overlay(DragHandle())
+                    .help("Drag to move")
+
+                if model.hasQueues {
+                    tabGlyph("checklist", tab: .prs, help: "Your PRs (⌃⇥)")
+                    tabGlyph("line.3.horizontal", tab: .queue, help: "Merge queue (⌃⇥)")
+                }
+                Button { model.pinnedPanel.toggle() } label: {
+                    Image(systemName: model.pinnedPanel ? "pin.fill" : "pin")
+                        .foregroundStyle(model.pinnedPanel ? Color.accentColor : .secondary)
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(model.pinnedPanel ? "Unpin: close on click outside again" : "Pin: stay open above other windows")
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(GeometryReader { g in Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(topHeight - h) > 0.5 { topHeight = h; report() } } })
+            VStack(spacing: 0) {
+                if model.isSearching {
+                    SearchField(model: model)
+                    Divider()
+                }
+            }
+            .background(GeometryReader { g in Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(midHeight - h) > 0.5 { midHeight = h; report() } } })
+            ZStack {
+                content
+                if showTour {
+                    TourView { withAnimation(.snappy(duration: 0.2, extraBounce: 0)) { model.prefs.tourSeen = true } }
+                        .transition(.opacity)
+                } else if model.showHotkeys {
+                    HotkeysView { withAnimation(.snappy(duration: 0.2, extraBounce: 0)) { model.showHotkeys = false } }
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                if model.isWatching {
+                    Divider()
+                    WatchField(model: model, focused: $watchFieldFocused)
+                }
+                Divider()
+                footer
+            }
+            .background(GeometryReader { g in Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(footerHeight - h) > 0.5 { footerHeight = h; report() } } })
+        }
+        .onChange(of: model.panelVisible) { _, visible in if !visible { model.isWatching = false; model.isSearching = false; model.searchText = "" } }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.auth {
+        case .unknown:
+            centered("Connecting…")
+        case .signedOut:
+            SignInView(model: model)
+        case .failed(let msg):
+            VStack(spacing: 8) {
+                Label(msg, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                Button("Retry") { Task { await model.signIn(); await model.refresh() } }
+            }
+            .padding(24)
+        case .signedIn:
+            if model.lastRefresh == nil && model.lastError == nil {
+                centered("Loading…")
+            } else if model.isEmpty {
+                centered("No open PRs")
+            } else if rowCount == 0 && (!model.statusFilter.isEmpty || !model.searchText.isEmpty) {
+                centered(model.searchText.isEmpty ? "No PRs match the filter" : "No PRs match “\(model.searchText)”")
+            } else {
+                // The panel has a user-chosen size; the list fills it and scrolls. Headers carry 8pt of their own; 4 more makes 12, matching the sides.
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        (model.tab == .queue && model.hasQueues ? AnyView(queueList) : AnyView(list))
+                            .background(GeometryReader { g in
+                                Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(model.contentHeight - h) > 0.5 { model.contentHeight = h } }
+                            })
+                    }
+                        .onChange(of: model.selectedID) { _, id in
+                            if let id { withAnimation(.snappy(duration: 0.15)) { proxy.scrollTo(id, anchor: .center) } }
+                        }
+                }
+            }
+        }
+    }
+
+    /// Two small glyphs rather than a segmented control: the panel is narrow and this is a view
+    /// switch, not a setting. The active one takes the accent colour.
+    private func tabGlyph(_ symbol: String, tab: AppModel.Tab, help: String) -> some View {
+        Button { model.tab = tab } label: {
+            Image(systemName: symbol)
+                .foregroundStyle(model.tab == tab ? Color.accentColor : .secondary)
+                .frame(width: 22, height: 22).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(help)
+    }
+
+    private var allSectionsCollapsed: Bool {
+        !model.sections.isEmpty && model.sections.allSatisfy { model.prefs.collapsedSections.contains($0.id) }
+    }
+
+    private var rowCount: Int {
+        model.sections.reduce(0) { $0 + (model.isCollapsed($1.id) ? 0 : $1.prs.count) }
+    }
+
+    /// The Queue tab: one section per queue, rows in position order.
+    private var queueList: some View {
+        VStack(spacing: 0) {
+            ForEach(model.queueSections) { s in
+                section(s, showHeader: true, stacked: false)
+            }
+        }
+    }
+
+    private var list: some View {
+        let sections = model.sections
+        // With only "My PRs" there's nothing to distinguish, so no header at all (looks like v1).
+        let showHeaders = !(sections.count == 1 && sections[0].id == "Mine")
+        return VStack(spacing: 0) {
+            ForEach(sections) { s in
+                section(s, showHeader: showHeaders)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func section(_ sec: AppModel.Section, showHeader: Bool, stacked: Bool = true) -> some View {
+        if !sec.prs.isEmpty {
+            let collapsed = showHeader && model.isCollapsed(sec.id)
+            if showHeader {
+                SectionHeader(id: sec.id, title: sec.title, prs: sec.prs, collapsed: collapsed, mode: model.prefs.sectionCounts,
+                              allCollapsed: allSectionsCollapsed,
+                              url: sec.url,
+                              toggle: { model.prefs.toggleCollapsed(sec.id) },
+                              toggleAll: { _ = model.handle(.toggleSections) },
+                              drop: { moving in
+                                  withAnimation(.snappy(duration: 0.2, extraBounce: 0)) {
+                                      model.prefs.moveSection(moving, onto: sec.id, currentOrder: model.sectionIDs)
+                                  }
+                                  model.sourcesChanged()
+                              })
+            }
+            if !collapsed {
+                // Queue sections keep GitHub's order: position is the information. Stacks.layout
+                // regroups by state and recency, which would scramble exactly that.
+                let rows = stacked ? Stacks.layout(sec.prs) : sec.prs.map { StackRow(pr: $0, depth: 0, stackID: nil) }
+                ForEach(rows) { row in
+                    PRRow(pr: row.pr, model: model, section: sec, depth: row.depth,
+                          stack: row.stackID.map { Stacks.members(of: $0, in: rows) })
+                    Divider()
+                }
+            }
+        }
+    }
+
+    /// Station's Settings window (StationSettings brings it to the front).
+    private func showSettings() {
+        StationSettings.show()
+    }
+
+    private func centered(_ text: String) -> some View {
+        Text(text).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { model.contentHeight = 120 }
+    }
+
+    private var footer: some View {
+        // Narrow panel: drop the timestamp first, then the counts' labels never compress (fixedSize).
+        ViewThatFits(in: .horizontal) {
+            footerRow(showTime: true)
+            footerRow(showTime: false)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(.leading, 12).padding(.trailing, 6).padding(.top, 4).padding(.bottom, 4)
+    }
+
+    private func footerRow(showTime: Bool) -> some View {
+        HStack(spacing: 4) {
+            // US-018: status filters. Click a dot to show only that state; click again to clear. Multi-select.
+            if case .signedIn = model.auth, !model.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach([CIState.failure, .pending, .success], id: \.self) { state in
+                        FilterDot(state: state, count: model.count(state),
+                                  active: model.statusFilter.isEmpty || model.statusFilter.contains(state),
+                                  selected: model.statusFilter.contains(state)) { model.toggleFilter(state) }
+                    }
+                }
+                .fixedSize()
+            }
+            if let err = model.lastError {
+                if showTime {
+                    Label("Stale, retrying", systemImage: "wifi.exclamationmark")
+                        .font(.caption).foregroundStyle(.orange).help(err).lineLimit(1).fixedSize()
+                } else {
+                    Image(systemName: "wifi.exclamationmark").font(.caption).foregroundStyle(.orange).help(err)
+                }
+            }
+            Spacer(minLength: 8)
+            if model.updater.updateAvailable, let v = model.updater.latest?.version {
+                Button {
+                    Task { await model.updater.install() }
+                } label: {
+                    let busy = model.updater.state == .downloading || model.updater.state == .installing
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                        if showTime { Text(busy ? "Updating…" : "Update to \(v)") }
+                    }
+                    .font(.caption).fixedSize()
+                }
+                .buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                .disabled(model.updater.state == .downloading || model.updater.state == .installing)
+                .help("Download, verify, and relaunch")
+            }
+            // ⌘N has no button of its own; it lives in the dots' right-click menu.
+            Button("Watch a PR") { model.isWatching = true }
+                .keyboardShortcut("n").hidden().frame(width: 0, height: 0)
+            if showTime, model.lastError == nil, let t = model.lastRefresh {
+                // Ticks on its own; the panel can sit open far longer than a refresh interval.
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(t.terseAgo)
+                        .font(.caption).foregroundStyle(.tertiary).monospacedDigit()
+                        .lineLimit(1).fixedSize()
+                }
+                .help("Last refreshed")
+                .padding(.trailing, 2)
+            }
+            Button { Task { await model.refresh() } } label: {
+                // AppKit's own spinner while it works: a rotated SF Symbol wobbles off its centre.
+                ZStack {
+                    if model.isRefreshing {
+                        ProgressView().controlSize(.small).scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .frame(width: 22, height: 22)
+            }
+            .keyboardShortcut("r").disabled(model.isRefreshing).help("Refresh now (⌘R)")
+            Button { showSettings() } label: { Image(systemName: "gearshape").frame(width: 22, height: 22) }
+                .keyboardShortcut(",").help("Settings (⌘,)")
+            // ⌘Q still quits while the popover is open; the visible Quit button lives in Settings.
+            Button("Quit") { NSApp.terminate(nil) }
+                .keyboardShortcut("q").hidden().frame(width: 0, height: 0)
+        }
+    }
+}
+
+/// US-032: type to filter. Esc clears, then closes the field.
+struct SearchField: View {
+    @Bindable var model: AppModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search", text: $model.searchText)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                    .onExitCommand {
+                        if model.searchText.isEmpty { model.isSearching = false } else { model.searchText = "" }
+                    }
+                if !model.searchText.isEmpty {
+                    Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
+            }
+            // Completion chips: prefixes when idle, matching values once a prefix is typed. Click to insert.
+            let chips = model.searchSuggestions
+            if !chips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(chips) { c in
+                            Button { model.searchText = SearchQuery.complete(model.searchText, with: c.insert); focused = true } label: {
+                                Text(c.label).font(.caption2).monospaced().foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(.quaternary, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        // Focus after the field is in the hierarchy; the footer button would otherwise keep it.
+        .onAppear { Task { @MainActor in try? await Task.sleep(for: .milliseconds(60)); focused = true } }
+        .onChange(of: model.isSearching) { _, on in if on { Task { @MainActor in try? await Task.sleep(for: .milliseconds(60)); focused = true } } }
+    }
+}
+
+/// US-011: paste a PR URL, press Return.
+struct WatchField: View {
+    @Bindable var model: AppModel
+    var focused: FocusState<Bool>.Binding
+    @State private var text = ""
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "eye").foregroundStyle(.secondary)
+                TextField("Paste a GitHub PR URL", text: $text)
+                    .textFieldStyle(.plain)
+                    .focused(focused)
+                    .onSubmit(submit)
+                    .onExitCommand { model.isWatching = false }
+            }
+            if let error {
+                Text(error).font(.caption).foregroundStyle(.red).padding(.leading, 24)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private func submit() {
+        switch model.watch(urlString: text) {
+        case .added:
+            text = ""; error = nil; model.isWatching = false
+        case .alreadyWatched:
+            error = "Already watching that PR"
+        case .invalid:
+            error = "Not a PR URL"
+        }
+    }
+}
+
+/// Click to collapse. Drag to reorder (US-023). Collapsed: per-state counts so nothing is lost.
+struct SectionHeader: View {
+    let id: String
+    let title: String
+    let prs: [PullRequest]
+    let collapsed: Bool
+    var mode: UserPrefs.SectionCounts = .off
+    var allCollapsed = false
+    /// Where this section lives on GitHub, when it lives anywhere.
+    var url: URL? = nil
+    let toggle: () -> Void
+    var toggleAll: () -> Void = {}
+    let drop: (String) -> Void
+    @State private var targeted = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                .rotationEffect(.degrees(collapsed ? -90 : 0))
+                .frame(width: 10)
+            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            if collapsed && mode != .off {
+                // Attention: only red and yellow get a dot; everything else folds into a quiet total.
+                // Full: one count per state, worst first, zeros omitted.
+                let states: [CIState] = mode == .full ? CIState.allCases : [.failure, .pending]
+                ForEach(states, id: \.self) { state in
+                    let n = prs.filter { $0.effectiveState == state }.count
+                    if n > 0 {
+                        HStack(spacing: 3) {
+                            StatusDot(state: state)
+                            Text("\(n)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        .padding(.leading, 4)
+                    }
+                }
+                if mode == .attention {
+                    Text("· \(prs.count)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit().padding(.leading, 2)
+                }
+            }
+            Spacer()
+            if let url {
+                Button { NSWorkspace.shared.open(url) } label: {
+                    Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain).help("Open on GitHub")
+                .padding(.trailing, 2)
+            }
+            Image(systemName: "line.3.horizontal").font(.caption2).foregroundStyle(.quaternary)
+                .help("Drag to reorder")
+        }
+        .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, collapsed ? 8 : 2)
+        .contentShape(Rectangle())
+        .overlay(alignment: .top) {
+            if targeted { Rectangle().fill(Color.accentColor).frame(height: 2).padding(.horizontal, 8) }
+        }
+        .onTapGesture(perform: toggle)
+        .contextMenu {
+            Button(collapsed ? "Expand \(title)" : "Collapse \(title)", action: toggle)
+            Divider()
+            // No .keyboardShortcut here: the panel's own keyDown already owns ⇧⌘E, and
+            // registering it twice risks the two handlers cancelling each other out.
+            Button(allCollapsed ? "Expand All Sections (⇧⌘E)" : "Collapse All Sections (⇧⌘E)", action: toggleAll)
+        }
+        .draggable(id)
+        .dropDestination(for: String.self) { items, _ in
+            guard let moving = items.first else { return false }
+            drop(moving)
+            return true
+        } isTargeted: { targeted = $0 }
+        .animation(.easeOut(duration: 0.15), value: collapsed)
+    }
+}
+
+struct PRRow: View {
+    let pr: PullRequest
+    @Bindable var model: AppModel
+    var section: AppModel.Section? = nil
+    /// Stack depth (US-015). 0 = bottom of stack or standalone.
+    var depth: Int = 0
+    /// All rows of this PR's stack, bottom-up. nil when not stacked.
+    var stack: [StackRow]? = nil
+    @Environment(\.openURL) private var openURL
+    @Environment(\.colorProfile) private var colorProfile
+    @State private var hovering = false
+    @State private var copied: String?  // which button just copied, for the 1s checkmark
+    @State private var editingAlias = false
+    @State private var aliasDraft = ""
+    @FocusState private var aliasFocused: Bool
+
+    private var pinned: Bool { model.isPinned(pr) }
+    private var watched: Bool { model.isWatched(pr) }
+    private var isMine: Bool { model.isMine(pr) }
+    private var alias: String? { model.prefs.alias(for: pr.id) }
+    private var expanded: Bool { model.expandedID == pr.id }
+    private var isQueueRow: Bool { pr.id.hasPrefix("queue:") }
+    private var selected: Bool { model.selectedID == pr.id }
+    private static let motion = Animation.snappy(duration: 0.2, extraBounce: 0)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            if expanded {
+                expansion
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .background(selected ? AnyShapeStyle(Color.accentColor.opacity(0.18))
+                    : hovering || expanded ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(.clear))
+        .id(pr.id)
+        .onHover { hovering = $0 }
+        .contextMenu { menu }
+    }
+
+    // MARK: Header row. Click does whatever Settings → Display says; double-click or ⌘-click does the other.
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            if depth > 0 {
+                // Stack connector: this PR is based on the row above.
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .padding(.leading, CGFloat(depth - 1) * 14)
+            }
+            if let q = pr.mergeQueue, isQueueRow {
+                // Position is the point of this list, so it reads as a number in the gutter
+                // rather than another badge. Red when this entry is what everything else waits on.
+                Text("\(q.position)")
+                    .font(.caption2.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(q.isBlocked ? AnyShapeStyle(stateColor(.failure)) : AnyShapeStyle(.tertiary))
+                    .frame(width: 16, alignment: .trailing)
+                    .help(q.isBlocked ? "Blocked: everything behind it waits" : "Position \(q.position) in the queue")
+            }
+            if pr.status == .merged {
+                // Landed. The branch badge says how the base branch is doing now.
+                Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(Color.githubMerged).frame(width: 8)
+            } else {
+                StatusDot(state: pr.state, hollow: pr.isDraft)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(section?.refLabel(for: pr) ?? pr.shortRef)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    if !isMine && !pr.isBranch && !pr.author.isEmpty && !(section?.hidesAuthor ?? false) {
+                        Text("· @\(pr.author)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if pr.isDraft { tag("Draft") }
+                    if pr.status == .merged && section?.id != "Merged" { tag("Merged", symbol: "arrow.triangle.merge", tint: .githubMerged) }
+                    if pr.status == .merged, let bs = pr.baseState {
+                        // Base branch health: red / yellow / green by its latest CI run.
+                        tag(pr.baseRefName, symbol: "arrow.triangle.branch", tint: stateColor(bs))
+                        .help("\(pr.baseRefName) is \(bs == .failure ? "failing" : bs == .pending ? "running" : "passing") right now")
+                    }
+                    if let note = pr.note { tag(note) }
+                    if pr.id.hasPrefix("queue:"), model.isMine(pr) {
+                        tag("yours", symbol: "person.fill")
+                            .help("Your PR, also listed in its own section above")
+                    }
+                    if let st = model.agentStatus[pr.id] {
+                        // Agent status from hooks / callbacks (US-034). Click to dismiss.
+                        Button { model.focusAgent(pr) } label: {
+                            tag(st.state == "attention" ? "needs you" : st.state == "done" ? "agent done" : "agent working",
+                                symbol: "cpu",
+                                tint: st.state == "attention" ? .orange : st.state == "done" ? stateColor(.success) : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Reported by your agent \(st.at.compactAgo) ago. Click to jump to its terminal window; right-click the row to dismiss.")
+                    }
+                    if pr.status == .closed { tag("Closed", symbol: "xmark", tint: stateColor(.failure)) }
+                    if pr.status == .open, !pr.isDraft, let label = pr.mergeState.label {
+                        tag(label, symbol: pr.mergeState.isBlocking ? "exclamationmark.triangle.fill" : nil,
+                            tint: pr.mergeState.isBlocking ? stateColor(.failure) : .secondary)
+                    }
+                    // A queued PR is approved by definition, so the seal would say nothing here.
+                    if pr.status == .open, !pr.isDraft, !isQueueRow, let symbol = pr.review.symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(pr.review == .changesRequested ? stateColor(.failure)
+                                             : pr.review == .approved ? stateColor(.success) : Color.secondary)
+                            .help(pr.review.label)
+                    }
+                    if let q = pr.mergeQueue, !isQueueRow {
+                        tag("Queue \(q.position)",
+                            symbol: q.isBlocked ? "exclamationmark.triangle.fill" : "line.3.horizontal",
+                            tint: q.isBlocked ? stateColor(.failure) : .secondary)
+                        .help(q.isBlocked ? "Blocked: this one can't merge, and everything behind it waits"
+                                          : "Position \(q.position) in the merge queue")
+                    }
+                    if depth == 0, stack == nil, pr.hasNonTrunkBase {
+                        // Based on a branch we can't see: part of a stack whose bottom isn't in view.
+                        tag("on \(pr.baseRefName)")
+                            .frame(maxWidth: 150, alignment: .leading) // long stack branches shorten in the middle
+                            .help("Stacked on \(pr.baseRefName)")
+                    }
+                    if pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary) }
+                }
+                if editingAlias {
+                    TextField(pr.title, text: $aliasDraft)
+                        .textFieldStyle(.plain)
+                        .focused($aliasFocused)
+                        .onSubmit { model.prefs.setAlias(aliasDraft, for: pr.id); editingAlias = false }
+                        .onExitCommand { editingAlias = false }
+                        .onChange(of: aliasFocused) { _, f in if !f { editingAlias = false } }
+                } else {
+                    Text(model.displayTitle(pr)).lineLimit(1).truncationMode(.tail)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text((pr.mergedAt ?? pr.updatedAt).compactAgo).font(.caption).foregroundStyle(.tertiary).monospacedDigit()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .gesture(
+            // Whichever action isn't on the single click lives on the double click, so both are
+            // always reachable. ⌘-click always does the other one too (Settings → Display).
+            TapGesture(count: 2).onEnded { model.selectedID = pr.id; secondaryClick() }
+                .exclusively(before: TapGesture().onEnded {
+                    guard !editingAlias else { return }
+                    model.selectedID = pr.id
+                    if NSEvent.modifierFlags.contains(.command) { secondaryClick() } else { primaryClick() }
+                })
+        )
+        // Quick actions on hover. Attached AFTER the tap gesture so the buttons own their clicks.
+        .overlay(alignment: .trailing) {
+            if hovering && !expanded && !editingAlias {
+                HStack(spacing: 12) {
+                    glyph("arrow.up.right", help: "Open on GitHub") { openURL(pr.url) }
+                    glyph(copied == "url" ? "checkmark" : "doc.on.doc", help: "Copy URL", tint: copied == "url" ? stateColor(.success) : nil) {
+                        flash("url") { copy(pr.url.absoluteString) }
+                    }
+                    glyph(copied == "share" ? "checkmark" : "square.and.arrow.up", help: "Share: title as a link",
+                          tint: copied == "share" ? stateColor(.success) : nil) { flash("share") { copyRichLink() } }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.trailing, 10)
+                .transition(.opacity)
+            }
+        }
+    }
+
+    private func toggleExpand() { withAnimation(Self.motion) { model.toggleExpanded(pr.id) } }
+
+    private func primaryClick() {
+        if model.prefs.primaryClick == .expand { toggleExpand() } else { openURL(pr.url) }
+    }
+
+    private func secondaryClick() {
+        if model.prefs.primaryClick == .expand { openURL(pr.url) } else { toggleExpand() }
+    }
+
+    /// "3 of 16 checks failed" / "2 of 4 checks running" / "12 checks passed" / "1 check passed"
+    private var checksSummary: String {
+        let n = pr.checks.count
+        let failed = pr.failingChecks.count
+        let pending = pr.checks.filter { $0.state == .pending }.count
+        let noun = n == 1 ? "check" : "checks"
+        if failed > 0 { return "\(failed) of \(n) \(noun) failed" }
+        if pending > 0 { return "\(pending) of \(n) \(noun) running" }
+        return "\(n) \(noun) passed"
+    }
+
+    // MARK: Expansion (US-021)
+
+    private var expansion: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if alias != nil {
+                Text(pr.title).font(.caption.weight(.medium)).lineLimit(2)
+            }
+            if !pr.summary.isEmpty {
+                Text(pr.summary).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(3).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !pr.checks.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(pr.failingChecks) { check in
+                        Button { if let u = check.url { openURL(u) } } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(stateColor(.failure)).font(.caption)
+                                Text(check.name).font(.caption).lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    // Every job, every workflow: GitHub's checks tab for the PR.
+                    Button { openURL(pr.checksURL) } label: {
+                        HStack(spacing: 4) {
+                            Text(checksSummary).font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open the checks tab on GitHub")
+                }
+            }
+            FlowLayout(spacing: 10, rowSpacing: 8) {
+                ForEach(Array(buttons.enumerated()), id: \.offset) { i, b in
+                    circle(b.symbol, help: b.help, tint: b.tint, focused: selected && model.focusedButton == i, action: b.action)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onAppear { if selected { model.expandedButtonCount = buttons.count } }
+            .onChange(of: selected) { _, sel in if sel { model.expandedButtonCount = buttons.count } }
+            .onChange(of: model.activateFocused) { _, _ in
+                guard selected, let i = model.focusedButton, i < buttons.count else { return }
+                buttons[i].action()
+            }
+            if let err = model.agentError {
+                Text(err).font(.caption2).foregroundStyle(stateColor(.failure)).lineLimit(2)
+            }
+        }
+        .padding(.leading, 34 + CGFloat(depth) * 14).padding(.trailing, 12).padding(.bottom, 10)
+    }
+
+    private func glyph(_ symbol: String, help: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.caption.weight(.medium)).foregroundStyle(tint ?? .secondary)
+                .frame(width: 16, height: 16).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private struct RowButton { let symbol: String; let help: String; let tint: Color?; let action: () -> Void }
+
+    /// The expanded row's buttons, in the user's order (Settings → General → Row buttons), skipping ones that don't apply.
+    private var buttons: [RowButton] {
+        model.prefs.rowActions.filter { $0.isAvailable(for: pr, model: model) }.map { a in
+            switch a {
+            case .open: RowButton(symbol: a.symbol, help: pr.isBranch ? "Open commit on GitHub" : a.title, tint: nil) { openURL(pr.url) }
+            case .run: RowButton(symbol: a.symbol, help: "\(a.title) (⌘K)", tint: nil) { if let u = pr.actionsRunURL { openURL(u) } }
+            case .checks: RowButton(symbol: a.symbol, help: a.title, tint: nil) { openURL(pr.checksURL) }
+            // A `let` here would break the switch's implicit return, so the position is inline.
+            case .queue: RowButton(symbol: a.symbol,
+                                   help: "\(a.title)\(pr.mergeQueue.map { " · position \($0.position)" } ?? "")",
+                                   tint: nil) { if let u = pr.queueURL { openURL(u) } }
+            case .copyURL: RowButton(symbol: copied == a.id ? "checkmark" : a.symbol, help: "\(a.title) (⌘C)", tint: copied == a.id ? stateColor(.success) : nil) {
+                flash(a.id) { PRActions.copyURL(pr) }
+            }
+            case .share: RowButton(symbol: copied == a.id ? "checkmark" : a.symbol, help: "\(a.title) (⇧⌘C)", tint: copied == a.id ? stateColor(.success) : nil) {
+                flash(a.id) { PRActions.share(pr) }
+            }
+            case .copyBranch: RowButton(symbol: copied == a.id ? "checkmark" : a.symbol, help: "\(a.title) (⌘B)", tint: copied == a.id ? stateColor(.success) : nil) {
+                flash(a.id) { PRActions.copyBranch(pr) }
+            }
+            case .copyHash: RowButton(symbol: copied == a.id ? "checkmark" : a.symbol, help: "Copy commit hash \(pr.headSha.prefix(7)) (⇧⌘B)", tint: copied == a.id ? stateColor(.success) : nil) {
+                flash(a.id) { PRActions.copyHash(pr) }
+            }
+            case .pin: RowButton(symbol: pinned ? "pin.fill" : "pin", help: pinned ? "Unpin" : "Pin", tint: pinned ? .primary : nil) {
+                withAnimation(Self.motion) { model.togglePin(pr) }
+            }
+            case .fix: RowButton(symbol: a.symbol, help: pr.isBranch ? "Fix \(pr.headRefName) with \(model.agentTitle) on a new branch off it" : "Fix with \(model.agentTitle): worktree, terminal, agent", tint: nil) {
+                model.fix(pr, runAgent: true)
+            }
+            case .review: RowButton(symbol: a.symbol, help: "Adversarial review with \(model.agentTitle) (⇧⌘F)", tint: nil) {
+                model.review(pr)
+            }
+            case .onramp: RowButton(symbol: a.symbol, help: a.title, tint: nil) {
+                PRActions.openInOnramp(pr)
+            }
+            }
+        }
+    }
+
+    private func circle(_ symbol: String, help: String, tint: Color? = nil, focused: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            RowAction.symbolImage(symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(tint ?? .secondary)
+                .frame(width: 32, height: 32)
+                .background(.quaternary, in: Circle())
+                .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: focused ? 2 : 0))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func flash(_ key: String, _ action: () -> Void) {
+        action()
+        copied = key
+        Task { try? await Task.sleep(for: .seconds(1)); if copied == key { copied = nil } }
+    }
+
+    // MARK: Context menu: the rarer actions
+
+    @ViewBuilder
+    private var menu: some View {
+        Button(pinned ? "Unpin" : "Pin") { withAnimation(Self.motion) { model.togglePin(pr) } }
+        Button(alias == nil ? "Nickname…" : "Edit nickname…") { startEditingAlias() }
+        if alias != nil { Button("Clear nickname") { model.prefs.setAlias("", for: pr.id) } }
+        if watched { Button("Stop watching") { model.unwatch(pr) } }
+        Divider()
+        if !isMine && !pr.isBranch && !model.prefs.isFollowing(user: pr.author) {
+            Button("Follow @\(pr.author)") { model.follow(user: pr.author) }
+        }
+        if pr.isBranch {
+            Button("Stop following \(pr.repo)@\(pr.headRefName)") {
+                model.prefs.unfollow("\(pr.repo)@\(pr.headRefName)", kind: .branches); model.sourcesChanged()
+            }
+        } else {
+            Button("Hide this PR") { model.hide(pr: pr) }
+        }
+        if let run = pr.actionsRunURL { Button("Open Actions run") { openURL(run) } }
+        if !pr.checks.isEmpty { Button("Open checks tab") { openURL(pr.checksURL) } }
+        if pr.mergeQueue != nil, let q = URL(string: "https://github.com/\(pr.repo)/queue/\(pr.baseRefName)") {
+            Button("Open merge queue") { openURL(q) }
+        }
+        if model.agentStatus[pr.id] != nil || model.hasAgentSession(pr) {
+            Divider()
+            Button("Show agent terminal") { model.focusAgent(pr) }
+            Button("Dismiss agent status") { model.clearAgentStatus(prID: pr.id) }
+        }
+        if model.canRunAgent(pr) {
+            Divider()
+            Button(pr.isBranch ? "Fix \(pr.headRefName) with \(model.agentTitle) (new branch)" : "Fix with \(model.agentTitle)") { model.fix(pr, runAgent: true) }
+            if !pr.isBranch && pr.status == .open {
+                Button("Adversarial review with \(model.agentTitle)") { model.review(pr) }
+            }
+            Button("Open worktree in terminal") { model.fix(pr, runAgent: false) }
+        }
+        Divider()
+        Button("Share (rich link)") { copyRichLink() }
+        Button("Copy URL") { copy(pr.url.absoluteString) }
+        if !pr.headRefName.isEmpty { Button("Copy branch name") { copy(pr.headRefName) } }
+        Button("Copy commit hash (\(pr.headSha.prefix(7)))") { PRActions.copyHash(pr) }
+        if let stack, stack.count > 1 {
+            Button("Copy stack (\(stack.count) PRs) as Markdown") {
+                copy(Stacks.markdown(stack, topFirst: model.prefs.stackOrder == .topFirst))
+            }
+        }
+    }
+
+    private func startEditingAlias() {
+        aliasDraft = alias ?? ""
+        editingAlias = true
+        DispatchQueue.main.async { aliasFocused = true }
+    }
+
+    private func copy(_ value: String) { PRActions.copy(value) }
+    private func copyRichLink() { PRActions.share(pr) }
+
+    private func stateColor(_ s: CIState) -> Color {
+        colorProfile.color(for: s)
+    }
+
+    /// Badge text is always neutral; urgency rides on a small tinted glyph instead. Colored words in a
+    /// dense list fight the titles and each other.
+    private func tag(_ text: String, symbol: String? = nil, tint: Color = .secondary) -> some View {
+        HStack(spacing: 3) {
+            if let symbol {
+                Image(systemName: symbol).font(.system(size: 8, weight: .bold)).foregroundStyle(tint)
+            }
+            Text(text).foregroundStyle(Color.secondary)
+                .lineLimit(1).truncationMode(.middle) // a long branch name shortens; it never wraps into a blob
+        }
+        .font(.caption2)
+        .padding(.horizontal, 5).padding(.vertical, 1.5)
+        .background(.quaternary, in: Capsule())
+    }
+}
+
+/// Footer filter toggle: dot + count. Dimmed when another filter excludes it; underlined when selected.
+struct FilterDot: View {
+    let state: CIState
+    let count: Int
+    let active: Bool
+    let selected: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 4) {
+                StatusDot(state: state)
+                Text("\(count)").font(.caption).monospacedDigit().fixedSize()
+                    .foregroundStyle(selected ? .primary : .secondary)
+            }
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(selected ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: Capsule())
+            .opacity(active ? 1 : 0.4)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        let what: String = switch state {
+        case .failure: "failing"
+        case .pending: "running"
+        case .success: "passed"
+        case .none: "no checks"
+        }
+        return "\(count) \(what) across every section, the same tally as the menu bar dots. Landed merges aren't counted. Click to filter."
+    }
+}
+
+struct StatusDot: View {
+    let state: CIState
+    var hollow = false
+    @Environment(\.colorProfile) private var colorProfile
+    @State private var pulse = false
+
+    var color: Color {
+        colorProfile.color(for: state)
+    }
+
+    var body: some View {
+        Circle()
+            .strokeBorder(color, lineWidth: hollow ? 1.5 : 0)
+            .background(Circle().fill(hollow ? .clear : color))
+            .frame(width: 8, height: 8)
+            .opacity(state == .pending && pulse ? 0.4 : 1)
+            .animation(state == .pending ? .easeInOut(duration: 1).repeatForever() : .default, value: pulse)
+            .onAppear { pulse = state == .pending }
+    }
+}
+
+struct SignInView: View {
+    @Bindable var model: AppModel
+    @State private var token = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Sign in to GitHub").font(.headline)
+            if TokenSource.ghPath() == nil {
+                Text("Install the GitHub CLI and run:").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Run this in a terminal, then click Retry:").font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("gh auth login").font(.system(.body, design: .monospaced))
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("gh auth login", forType: .string)
+                }
+                Button("Retry") { Task { await model.signIn(); await model.refresh() } }
+            }
+            Divider()
+            Text("Or paste a fine-grained token (stored in Keychain):").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                SecureField("github_pat_…", text: $token)
+                Button("Save") { Task { await model.signIn(pastedToken: token); token = "" } }
+                    .disabled(token.isEmpty)
+            }
+        }
+        .padding(16)
+    }
+}

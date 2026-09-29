@@ -1,0 +1,90 @@
+name: Station
+options:
+  bundleIdPrefix: com.timwheeler
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: S3RY6Q3EW2
+    CODE_SIGN_STYLE: Automatic
+packages:
+  StoplightCore:
+    path: StoplightCore
+  Onramp:
+    path: Review # Onramp's review windows, CLI and MCP server; its Rust core comes from scripts/build-core.sh
+targets:
+  Station:
+    type: application
+    platform: macOS
+    sources:
+      - path: Station
+      - path: integrations # the Claude Code plugin, copied to ~/.config on launch
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: StoplightCore
+      - package: Onramp
+        product: onramp
+      - target: StationWidget
+        embed: true
+    info:
+      path: Station/Info.plist
+      properties:
+        CFBundleDisplayName: Station
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHighResolutionCapable: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.timwheeler.station
+            CFBundleURLSchemes: [onramp, stoplight]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Folder
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [public.folder]
+            LSHandlerRank: Alternate
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSHumanReadableCopyright: "© 2026 Tim Wheeler"
+    entitlements:
+      path: Station/Station.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.timwheeler.stoplight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.timwheeler.station
+        PRODUCT_NAME: Station
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  StationWidget:
+    type: app-extension
+    platform: macOS
+    sources: [StationWidget]
+    dependencies:
+      - package: StoplightCore
+    info:
+      path: StationWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Station
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: StationWidget/StoplightWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.com.timwheeler.stoplight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.timwheeler.station.widget
+        PRODUCT_NAME: StationWidget
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
