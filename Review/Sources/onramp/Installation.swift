@@ -1,6 +1,6 @@
 import AppKit
 
-/// Things the installed app (Onramp.app) sets up for you.
+/// Things the installed app (Station.app) sets up for you.
 @MainActor
 enum Installation {
     /// The Claude Code plugin ships inside the app; keep the copy agents install from current.
@@ -14,9 +14,9 @@ enum Installation {
     }
 
     /// The command and its short alias.
-    static let commandNames = ["onramp", "ramp"]
+    static let commandNames = ["station"]
 
-    /// `onramp` (and `ramp`) in ~/.local/bin, pointing into the app.
+    /// `station` in ~/.local/bin, pointing into the app.
     static func installCommandLineTool() {
         let alert = NSAlert()
         guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return }
@@ -29,13 +29,13 @@ enum Installation {
                 try FileManager.default.createSymbolicLink(at: link, withDestinationURL: exe)
             }
             let onPath = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").contains { $0 == bin.path } || shellPathHas(bin.path)
-            alert.messageText = "Installed the onramp command"
+            alert.messageText = "Installed the station command"
             alert.informativeText = onPath
-                ? "Run `onramp` (or `ramp`) in any git repo to review it, or `onramp --help` for the agent commands."
+                ? "Run `station` in any git repo to review it, or `station --help` for the agent commands."
                 : "It's in ~/.local/bin, which isn't on your PATH yet. Add this line to ~/.zshrc, then open a new terminal:\n\nexport PATH=\"$HOME/.local/bin:$PATH\""
         } catch {
             alert.alertStyle = .warning
-            alert.messageText = "Couldn't install the onramp command"
+            alert.messageText = "Couldn't install the station command"
             alert.informativeText = error.localizedDescription
         }
         alert.runModal()

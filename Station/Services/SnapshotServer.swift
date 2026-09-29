@@ -3,7 +3,7 @@ import Network
 import OSLog
 import StoplightCore
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "SnapshotServer")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "SnapshotServer")
 
 /// Serves the current snapshot to the widget over loopback (US-007).
 ///

@@ -3,8 +3,8 @@
 # land as threads for you to Keep or Dismiss; nothing reaches your agent until
 # you keep it.
 #
-# Make your own: copy this to ~/.config/onramp/reviewers/ (just you) or to
-# .onramp/reviewers/ in a repo (your team), and change what you like. Same id
+# Make your own: copy this to ~/.config/station/reviewers/ (just you) or to
+# .station/reviewers/ in a repo (your team), and change what you like. Same id
 # replaces this one.
 id = "red-team"
 name = "Red team"

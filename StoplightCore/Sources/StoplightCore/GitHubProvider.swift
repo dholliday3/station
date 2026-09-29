@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "GitHub")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "GitHub")
 
 public struct GitHubProvider: CIProvider {
     public enum Error: Swift.Error, LocalizedError {
@@ -213,7 +213,7 @@ public struct GitHubProvider: CIProvider {
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Stoplight/0.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("Station/0.1", forHTTPHeaderField: "User-Agent")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         // A stale keep-alive connection surfaces as "network connection was lost" on the first request after idle.

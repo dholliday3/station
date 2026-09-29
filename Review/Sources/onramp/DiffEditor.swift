@@ -42,15 +42,15 @@ enum DiffStyle {
     nonisolated(unsafe) static var commentBorder = NSColor.separatorColor
     nonisolated(unsafe) static var accent = NSColor.labelColor
     /// Selected rows and segments: a neutral graphite wash, not the system blue.
-    nonisolated(unsafe) static var selection = NSColor(name: "onramp.selection") {
+    nonisolated(unsafe) static var selection = NSColor(name: "station.selection") {
         $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.13) : NSColor(white: 0, alpha: 0.085)
     }
     /// The same, in a window that isn't focused.
-    nonisolated(unsafe) static var selectionInactive = NSColor(name: "onramp.selectionInactive") {
+    nonisolated(unsafe) static var selectionInactive = NSColor(name: "station.selectionInactive") {
         $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.05)
     }
     /// Primary buttons (Submit, Commit, Merge): solid graphite with white text.
-    nonisolated(unsafe) static var primaryButton = NSColor(name: "onramp.primaryButton") {
+    nonisolated(unsafe) static var primaryButton = NSColor(name: "station.primaryButton") {
         $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.40, alpha: 1) : NSColor(white: 0.22, alpha: 1)
     }
     nonisolated(unsafe) static var isDark = true
@@ -473,7 +473,7 @@ final class DiffEditor: NSObject, NSTextViewDelegate {
         setStyledText(newText)
         let t1 = CACurrentMediaTime()
         defer {
-            if ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == "open-time" {
+            if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "open-time" {
                 FileHandle.standardError.write(String(format: "[open]   init: setText %.1f, refresh %.1f (%@)\n", (t1 - t0) * 1000, (CACurrentMediaTime() - t1) * 1000, lastBreakdown).data(using: .utf8)!)
             }
         }
@@ -570,7 +570,7 @@ final class DiffEditor: NSObject, NSTextViewDelegate {
             host.setFrameSize(NSSize(width: host.frame.width, height: height))
         }
         lastRefreshMs = (CACurrentMediaTime() - start) * 1000
-        if ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == "1" {
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "1" {
             var prev = start
             lastBreakdown = marks.map { m in defer { prev = m.1 }; return String(format: "%@ %.2f", m.0, (m.1 - prev) * 1000) }.joined(separator: ", ")
         }

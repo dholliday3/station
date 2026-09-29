@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 
 /// Loads extensions (folders with an `extension.toml`, parsed by the Rust core)
-/// from the app's built-in folder and ~/.config/onramp/extensions, and
+/// from the app's built-in folder and ~/.config/station/extensions, and
 /// applies what they contribute: fonts are registered for this process,
 /// themes are handed to `Style`.
 @MainActor
@@ -15,7 +15,7 @@ enum Extensions {
 
     /// A file shipped in the app's resource bundle, if present.
     static func resource(_ name: String) -> URL? {
-        // In Onramp.app the resources sit in Contents/Resources (see scripts/package.sh).
+        // In Station.app the resources sit in Contents/Resources (see scripts/package.sh).
         if Bundle.main.bundleIdentifier != nil, let url = Bundle.main.resourceURL?.appendingPathComponent(name),
            FileManager.default.fileExists(atPath: url.path) {
             return url
@@ -40,11 +40,11 @@ enum Extensions {
         let result = scan()
         loaded = result.extensions
         problems = result.problems
-        for p in problems { NSLog("Onramp: extension %@: %@", p.dir, p.message) }
+        for p in problems { NSLog("Station: extension %@: %@", p.dir, p.message) }
 
         let fonts = loaded.flatMap(\.fonts).filter { !registeredFonts.contains($0) }
         if !fonts.isEmpty {
-            // Process scope: the fonts exist for onramp only, nothing is installed system-wide.
+            // Process scope: the fonts exist for station only, nothing is installed system-wide.
             CTFontManagerRegisterFontURLs(fonts.map { URL(fileURLWithPath: $0) } as CFArray, .process, false, nil)
             registeredFonts.formUnion(fonts)
         }
@@ -54,7 +54,7 @@ enum Extensions {
             do {
                 return try JSONDecoder().decode(Theme.self, from: data)
             } catch {
-                NSLog("Onramp: theme %@: %@", path, "\(error)")
+                NSLog("Station: theme %@: %@", path, "\(error)")
                 return nil
             }
         }

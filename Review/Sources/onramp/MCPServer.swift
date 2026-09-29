@@ -1,8 +1,8 @@
 import Foundation
 
-/// `onramp mcp`: a Model Context Protocol server over stdio, so any
+/// `station mcp`: a Model Context Protocol server over stdio, so any
 /// MCP-capable agent can read review comments, reply, and resolve them.
-/// Register it once, e.g. `claude mcp add onramp -- onramp mcp`.
+/// Register it once, e.g. `claude mcp add station -- station mcp`.
 ///
 /// Same storage as the app and the CLI; the app picks up changes live.
 enum MCPServer {
@@ -33,7 +33,7 @@ enum MCPServer {
                 respond(id, result: [
                     "protocolVersion": params["protocolVersion"] as? String ?? "2025-06-18",
                     "capabilities": ["tools": [:], "prompts": [:]],
-                    "serverInfo": ["name": "onramp", "version": "0.1.0"],
+                    "serverInfo": ["name": "station", "version": "0.1.0"],
                     "instructions": instructions,
                 ])
             case "ping":
@@ -43,12 +43,12 @@ enum MCPServer {
             case "prompts/list":
                 respond(id, result: ["prompts": [[
                     "name": "address_comments",
-                    "description": "Work through the review comments left in Onramp: fix, then resolve or reply.",
+                    "description": "Work through the review comments left in Station: fix, then resolve or reply.",
                 ]]])
             case "prompts/get":
                 let md = (try? exportMarkdown(repoRoot: repoRoot, includeResolved: false)) ?? ""
                 respond(id, result: [
-                    "description": "Address Onramp review comments",
+                    "description": "Address Station review comments",
                     "messages": [["role": "user", "content": ["type": "text", "text": addressPrompt + "\n\n" + md]]],
                 ])
             case "tools/call":
@@ -68,7 +68,7 @@ enum MCPServer {
     }
 
     static let addressPrompt = """
-    I reviewed your changes in Onramp and left the comments below. First call \
+    I reviewed your changes in Station and left the comments below. First call \
     get_review_context: it has the standards and background I want you to follow. For each open comment: \
     call claim_comment first (skip any claimed by another agent), fix the code, then call \
     resolve_comment with a one-line note on what you changed. If a comment needs a decision from \
@@ -79,7 +79,7 @@ enum MCPServer {
     /// For agents helping review someone else's PR: read-only, answer in threads.
     static func prAssistPrompt(pr: Int?) -> String {
         """
-        I'm reviewing \(pr.map { "pull request #\($0)" } ?? "a commit") in Onramp — someone else's code — and I want your help. \
+        I'm reviewing \(pr.map { "pull request #\($0)" } ?? "a commit") in Station — someone else's code — and I want your help. \
         The code as it stands in the PR is checked out in the current directory (read-only). First call get_review_context \
         for the standards I care about. Then call list_comments: for each open comment, call claim_comment (skip any another \
         agent claimed), investigate the code, and answer with reply_to_comment — findings, explanations, risks, a suggested \
@@ -88,7 +88,7 @@ enum MCPServer {
         """
     }
 
-    /// Tell the app an agent is connected: `<git-dir>/onramp/agent-<pid>.json`,
+    /// Tell the app an agent is connected: `<git-dir>/station/agent-<pid>.json`,
     /// removed when the session ends (the app also ignores files from dead processes).
     private static func announce(repoRoot: String, agent: String) -> String? {
         guard let comments = try? commentsPath(repoRoot: repoRoot) else { return nil }
@@ -113,7 +113,7 @@ enum MCPServer {
     }
 
     static let instructions = """
-    The user reviews your code changes in Onramp and leaves comments on specific lines.
+    The user reviews your code changes in Station and leaves comments on specific lines.
     Call get_review_context once first: files the user picked as review standards and background. \
     Call list_comments to see open comments with the code they refer to. Before working on one, \
     call claim_comment so other agents leave it alone (skip comments another agent has claimed). \

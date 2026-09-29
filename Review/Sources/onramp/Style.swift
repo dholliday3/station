@@ -1,6 +1,6 @@
 import AppKit
 
-/// User settings, stored as JSON at ~/.config/onramp/settings.json
+/// User settings, stored as JSON at ~/.config/station/settings.json
 /// (edit it directly, or via the View menu; changes apply live).
 struct Settings: Codable, Equatable {
     var appearance = "system"              // system | light | dark
@@ -17,7 +17,7 @@ struct Settings: Codable, Equatable {
     var agentSession = "auto"              // agent_session: auto (a primed Claude session per review) | manual | off
     var agentModel: [String: String] = [:] // agent_model: {"claude": "sonnet"} for faster answers; unset = the agent's default
     var agentPaths: [String: String] = [:] // agent_paths: {"claude": "/path/to/claude"}; unset = found on your shell's PATH
-    var agentArgs: [String: String] = [:]  // agent_args: {"codex": "--full-auto"}; replaces the flags Onramp picks for a review run
+    var agentArgs: [String: String] = [:]  // agent_args: {"codex": "--full-auto"}; replaces the flags Station picks for a review run
 
     static let defaultFontSize = 12.5
 
@@ -45,13 +45,13 @@ struct Settings: Codable, Equatable {
     }
 }
 
-/// ~/.config/onramp, or $ONRAMP_CONFIG_DIR (tests use a scratch folder).
+/// ~/.config/station, or $STATION_CONFIG_DIR (tests use a scratch folder).
 /// Outside `Style` so the CLI and MCP server (no main actor) can use it too.
-let onrampConfigDir = ProcessInfo.processInfo.environment["ONRAMP_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
-    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/onramp")
+let onrampConfigDir = ProcessInfo.processInfo.environment["STATION_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
+    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/station")
 
 extension Notification.Name {
-    static let styleChanged = Notification.Name("onramp.styleChanged")
+    static let styleChanged = Notification.Name("station.styleChanged")
 }
 
 /// Owns settings + themes, picks the theme for the current light/dark mode,
@@ -60,7 +60,7 @@ extension Notification.Name {
 final class Style {
     static let shared = Style()
 
-    /// ~/.config/onramp, or $ONRAMP_CONFIG_DIR (tests use a scratch folder).
+    /// ~/.config/station, or $STATION_CONFIG_DIR (tests use a scratch folder).
     static let configDir = onrampConfigDir
     static let settingsURL = configDir.appendingPathComponent("settings.json")
     static let themesDir = configDir.appendingPathComponent("themes")

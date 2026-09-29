@@ -27,7 +27,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.tabbingIdentifier = "onramp" // projects open as tabs of one window
+        window.tabbingIdentifier = "station" // projects open as tabs of one window
         window.tabbingMode = .preferred
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -66,8 +66,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 1300, height: 850))
         window.center()
         if first {
-            window.setFrameAutosaveName("onramp.window")
-            if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames onramp.split.v2") == nil,
+            window.setFrameAutosaveName("station.window")
+            if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames station.split.v2") == nil,
                let split = window.contentViewController as? NSSplitViewController {
                 // First launch: files 260, right panel 340; afterwards the saved widths win.
                 split.splitView.setPosition(260, ofDividerAt: 0)
@@ -162,10 +162,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         comments.maximumThickness = 460
         comments.holdingPriority = .init(260)
         comments.canCollapse = true
-        comments.isCollapsed = UserDefaults.standard.bool(forKey: "onramp.commentsHidden")
+        comments.isCollapsed = UserDefaults.standard.bool(forKey: "station.commentsHidden")
         split.addSplitViewItem(comments)
         commentsItem = comments
-        split.splitView.autosaveName = "onramp.split.v2" // three panes now; older saved widths don't apply
+        split.splitView.autosaveName = "station.split.v2" // three panes now; older saved widths don't apply
         return split
     }
 
@@ -227,7 +227,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     private func showRight(_ tab: SidebarController.Tab) {
         if commentsItem?.isCollapsed == true {
             commentsItem?.animator().isCollapsed = false
-            UserDefaults.standard.set(false, forKey: "onramp.commentsHidden")
+            UserDefaults.standard.set(false, forKey: "station.commentsHidden")
         }
         sidebarController?.show(tab)
     }
@@ -245,7 +245,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     @objc func toggleComments(_ sender: Any?) {
         guard let item = commentsItem else { return }
         item.animator().isCollapsed.toggle()
-        UserDefaults.standard.set(item.isCollapsed, forKey: "onramp.commentsHidden")
+        UserDefaults.standard.set(item.isCollapsed, forKey: "station.commentsHidden")
     }
 
     private func wireSidebar() {

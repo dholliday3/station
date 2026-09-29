@@ -1,28 +1,28 @@
 import AppKit
 
-/// `onramp <command>`: how agents (any agent) read and answer review
+/// `station <command>`: how agents (any agent) read and answer review
 /// comments. Returns nil when the arguments mean "open the app".
 enum CLI {
     static let usage = """
-    onramp                             open the review for the current repo (returns right away)
-    onramp <path>                      open the review for the repo containing <path>
-    onramp --wait [path]               open it and wait until the window closes
+    station                             open the review for the current repo (returns right away)
+    station <path>                      open the review for the repo containing <path>
+    station --wait [path]               open it and wait until the window closes
 
-    onramp comments [--json] [--all]
+    station comments [--json] [--all]
                                        print open comments (--all includes resolved)
-    onramp reply <id> <text>           add a reply to a comment thread
-    onramp resolve <id> [--note <text>]
+    station reply <id> <text>           add a reply to a comment thread
+    station resolve <id> [--note <text>]
                                        mark a thread resolved, optionally with a note
-    onramp reopen <id>                 reopen a resolved thread
-    onramp claim <id>                  claim a thread before working on it (other agents skip it)
-    onramp release <id>                give a claimed thread back
-    onramp extensions                  list installed extensions and any problems loading them
-    onramp context                     print the review context agents get (files you chose in the app)
-    onramp prompt                      print instructions to paste into any agent
-    onramp mcp                         run as an MCP server (stdio) for agents that speak MCP,
-                                       e.g. `claude mcp add onramp -- onramp mcp`
+    station reopen <id>                 reopen a resolved thread
+    station claim <id>                  claim a thread before working on it (other agents skip it)
+    station release <id>                give a claimed thread back
+    station extensions                  list installed extensions and any problems loading them
+    station context                     print the review context agents get (files you chose in the app)
+    station prompt                      print instructions to paste into any agent
+    station mcp                         run as an MCP server (stdio) for agents that speak MCP,
+                                       e.g. `claude mcp add station -- station mcp`
 
-    Options: -C <dir> (repo, default: current dir)  --author <name> (default: $ONRAMP_AUTHOR or "agent")
+    Options: -C <dir> (repo, default: current dir)  --author <name> (default: $STATION_AUTHOR or "agent")
     """
 
     static let commands: Set<String> = ["comments", "reply", "resolve", "reopen", "claim", "release", "prompt", "extensions", "context", "mcp", "help", "--help", "-h"]
@@ -30,10 +30,10 @@ enum CLI {
     static func run(_ argv: [String]) -> Int32? {
         guard let command = argv.first, commands.contains(command) else { return nil }
         var args = Array(argv.dropFirst())
-        // ONRAMP_REPO: set for agents working in a PR's private checkout, so their
+        // STATION_REPO: set for agents working in a PR's private checkout, so their
         // replies land in the review you have open, not in that checkout.
-        let dir = take(&args, "-C") ?? ProcessInfo.processInfo.environment["ONRAMP_REPO"] ?? FileManager.default.currentDirectoryPath
-        let explicitAuthor = take(&args, "--author") ?? ProcessInfo.processInfo.environment["ONRAMP_AUTHOR"]
+        let dir = take(&args, "-C") ?? ProcessInfo.processInfo.environment["STATION_REPO"] ?? FileManager.default.currentDirectoryPath
+        let explicitAuthor = take(&args, "--author") ?? ProcessInfo.processInfo.environment["STATION_AUTHOR"]
         let author = explicitAuthor ?? "agent"
         let note = take(&args, "--note")
         let json = flag(&args, "--json")
@@ -67,15 +67,15 @@ enum CLI {
                 let root = try repoRoot(dir)
                 print(json ? try exportJson(repoRoot: root, includeResolved: all) : try exportMarkdown(repoRoot: root, includeResolved: all))
             case "reply":
-                guard args.count >= 2 else { return fail("usage: onramp reply <id> <text>") }
+                guard args.count >= 2 else { return fail("usage: station reply <id> <text>") }
                 let t = try reply(repoRoot: try repoRoot(dir), id: args[0], author: author, body: args.dropFirst().joined(separator: " "), pending: false)
                 print("replied to \(t.id)")
             case "resolve", "reopen":
-                guard let id = args.first else { return fail("usage: onramp \(command) <id>") }
+                guard let id = args.first else { return fail("usage: station \(command) <id>") }
                 let t = try setResolved(repoRoot: try repoRoot(dir), id: id, resolved: command == "resolve", author: author, note: note)
                 print("\(command == "resolve" ? "resolved" : "reopened") \(t.id)")
             case "claim", "release":
-                guard let id = args.first else { return fail("usage: onramp \(command) <id>") }
+                guard let id = args.first else { return fail("usage: station \(command) <id>") }
                 let root = try repoRoot(dir)
                 let t = command == "claim" ? try claimThread(repoRoot: root, id: id, agent: author) : try releaseThread(repoRoot: root, id: id, agent: author)
                 print("\(command == "claim" ? "claimed" : "released") \(t.id)")
@@ -85,20 +85,20 @@ enum CLI {
             return 0
         } catch let error as CoreError {
             switch error {
-            case let .Git(message), let .Io(message): return fail("onramp: \(message)")
+            case let .Git(message), let .Io(message): return fail("station: \(message)")
             }
         } catch {
-            return fail("onramp: \(error)")
+            return fail("station: \(error)")
         }
     }
 
     static let prompt = """
-    I left review comments on your changes using Onramp.
-    1. Run `onramp comments` to see every open comment, with the code it refers to.
+    I left review comments on your changes using Station.
+    1. Run `station comments` to see every open comment, with the code it refers to.
     2. Address each one by editing the code.
-    3. After fixing one, run `onramp resolve <id> --note "<what you changed>"`.
-       If you disagree or need a decision from me, run `onramp reply <id> "<question>"` instead of resolving.
-    4. When done, run `onramp comments` again to confirm nothing is left open.
+    3. After fixing one, run `station resolve <id> --note "<what you changed>"`.
+       If you disagree or need a decision from me, run `station reply <id> "<question>"` instead of resolving.
+    4. When done, run `station comments` again to confirm nothing is left open.
     """
 
     /// `repo` nil: opened from Finder / the Dock with no repo (reopen the last one).
@@ -108,47 +108,47 @@ enum CLI {
     static let bundleID = Bundle.main.bundleIdentifier ?? "com.timwheeler.station"
     static let openNotification = Notification.Name(bundleID + ".open")
 
-    /// The Onramp.app this binary lives in (also when run through the `onramp` / `ramp` links).
+    /// The Station.app this binary lives in (also when run through the `station` / `ramp` links).
     static var appBundle: URL? {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
         guard let r = exe.range(of: ".app/Contents/MacOS/") else { return nil }
         return URL(fileURLWithPath: String(exe[..<r.lowerBound]) + ".app")
     }
 
-    /// `onramp [path]`: find the repo, then (from a terminal) relaunch the
+    /// `station [path]`: find the repo, then (from a terminal) relaunch the
     /// app detached and return, like `code .`.
     static func prepareOpen(_ argv: [String]) -> Open {
         let wait = argv.contains("--wait")
         let given = argv.first { !$0.hasPrefix("-") && $0 != "YES" && $0 != "NO" }
         let env = ProcessInfo.processInfo.environment
         // Double-clicked / Dock: no path, and not started from a terminal inside a repo.
-        let fromFinder = given == nil && (argv.contains { $0.hasPrefix("-psn") } || FileManager.default.currentDirectoryPath == "/" || env["ONRAMP_DETACHED"] != nil)
+        let fromFinder = given == nil && (argv.contains { $0.hasPrefix("-psn") } || FileManager.default.currentDirectoryPath == "/" || env["STATION_DETACHED"] != nil)
         let path = given ?? FileManager.default.currentDirectoryPath
         let root: String
         do { root = try repoRoot(URL(fileURLWithPath: path).standardizedFileURL.path) } catch {
             if fromFinder || (given == nil && appBundle != nil && env["TERM"] == nil) { return .run(repo: nil) }
-            FileHandle.standardError.write("onramp: not inside a git repository: \(path)\n".data(using: .utf8)!)
+            FileHandle.standardError.write("station: not inside a git repository: \(path)\n".data(using: .utf8)!)
             return .exit(1)
         }
         // Already running (the installed app): hand it the repo; it opens a tab.
-        if env["ONRAMP_SELFTEST"] == nil, env["ONRAMP_DETACHED"] == nil,
+        if env["STATION_SELFTEST"] == nil, env["STATION_DETACHED"] == nil,
            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains(where: { $0.processIdentifier != getpid() }) {
             DistributedNotificationCenter.default().postNotificationName(openNotification, object: root, userInfo: nil, deliverImmediately: true)
-            print("Opened \((root as NSString).lastPathComponent) in Onramp")
+            print("Opened \((root as NSString).lastPathComponent) in Station")
             return .exit(0)
         }
         // Always detach (terminals, Claude Code's `!`, scripts), unless asked to wait. Launched by
         // Launch Services (parent is launchd): this IS the app, so run rather than hand off again.
-        guard !wait, env["ONRAMP_DETACHED"] == nil, env["ONRAMP_SELFTEST"] == nil, getppid() != 1 else { return .run(repo: root) }
+        guard !wait, env["STATION_DETACHED"] == nil, env["STATION_SELFTEST"] == nil, getppid() != 1 else { return .run(repo: root) }
 
         // The installed app: launch it through Launch Services (a real app launch, Dock and all).
-        if let app = appBundle, env["ONRAMP_SELFTEST"] == nil {
+        if let app = appBundle, env["STATION_SELFTEST"] == nil {
             let open = Process()
             open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             open.arguments = ["-a", app.path, "--args", root]
             if (try? open.run()) != nil {
                 open.waitUntilExit()
-                print("Opening Onramp for \((root as NSString).lastPathComponent)")
+                print("Opening Station for \((root as NSString).lastPathComponent)")
                 return .exit(0)
             }
         }
@@ -156,7 +156,7 @@ enum CLI {
         let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
         let passthrough = argv.filter { $0.hasPrefix("-") && $0 != "--wait" }
         let args: [String] = [exe, root] + passthrough
-        let vars: [String] = env.map { "\($0.key)=\($0.value)" } + ["ONRAMP_DETACHED=1"]
+        let vars: [String] = env.map { "\($0.key)=\($0.value)" } + ["STATION_DETACHED=1"]
         var argvC: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
         var envC: [UnsafeMutablePointer<CChar>?] = vars.map { strdup($0) } + [nil]
         defer { (argvC + envC).forEach { free($0) } }
@@ -173,7 +173,7 @@ enum CLI {
         posix_spawnattr_destroy(&attr)
         posix_spawn_file_actions_destroy(&files)
         guard rc == 0 else { return .run(repo: root) } // couldn't detach: just run here
-        print("Opening Onramp for \((root as NSString).lastPathComponent)")
+        print("Opening Station for \((root as NSString).lastPathComponent)")
         return .exit(0)
     }
 

@@ -49,7 +49,7 @@ enum Hotkey: CaseIterable {
 
     var title: String {
         switch self {
-        case .toggleGlobal: "Show or hide Stoplight (works anywhere)"
+        case .toggleGlobal: "Show or hide Station (works anywhere)"
         case .moveDown: "Next PR"
         case .moveUp: "Previous PR"
         case .open: "Open selected PR on GitHub"
@@ -150,11 +150,11 @@ final class GlobalHotkey: @unchecked Sendable {
 
 /// Clipboard actions shared by the row buttons, the context menu, and the hotkeys.
 enum PRActions {
-    /// Reviews open in Station's own windows, so "Review in Onramp" is always there.
+    /// Reviews open in Station's own windows, so "Review in Station" is always there.
     static var onrampInstalled: Bool { true }
 
-    /// Where to get Onramp (Settings → Row buttons links here while it isn't installed).
-    static let onrampDownload = URL(string: "https://github.com/timmywheels/onramp/releases/latest")!
+    /// Where to get Station (Settings → Row buttons links here while it isn't installed).
+    static let onrampDownload = URL(string: "https://github.com/timmywheels/station/releases/latest")!
 
     /// Open the PR's review in a Station window (as a tab; it finds your local clone).
     @MainActor static func openInOnramp(_ pr: PullRequest) {

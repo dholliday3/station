@@ -1,7 +1,7 @@
 import SwiftUI
 import StoplightCore
 
-/// When Stoplight speaks up: CI changes, plus reviews and comments, minus the people and bots you mute.
+/// When Station speaks up: CI changes, plus reviews and comments, minus the people and bots you mute.
 struct NotificationsTab: View {
     @Bindable var model: AppModel
     @State private var draft = ""
@@ -33,7 +33,7 @@ struct NotificationsTab: View {
                 Picker(selection: $prefs.notifyActivityOn) {
                     ForEach(UserPrefs.ActivityScope.allCases) { Text($0.title).tag($0) }
                 } label: {
-                    InfoLabel("On", "Your own pull requests, or every one Stoplight shows you (people and repos you follow, PRs you watch).")
+                    InfoLabel("On", "Your own pull requests, or every one Station shows you (people and repos you follow, PRs you watch).")
                 }
                 .disabled(!prefs.notifyReviews && !prefs.notifyComments)
             } header: {
@@ -69,7 +69,7 @@ struct NotificationsTab: View {
                             }
                             .menuStyle(.borderlessButton)
                             .fixedSize()
-                            .help("People and bots who commented on the PRs Stoplight shows. Pick one to mute it.")
+                            .help("People and bots who commented on the PRs Station shows. Pick one to mute it.")
                         }
                         if let problem { Text(problem).font(.caption).foregroundStyle(.secondary) }
                     }

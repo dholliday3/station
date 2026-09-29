@@ -17,7 +17,7 @@ struct TourView: View {
     // Computed, not stored: the art has to read the color profile from the environment.
     private var slides: [Slide] { [
         Slide(title: "Stop refreshing GitHub",
-              body: "Stoplight watches every open PR you have. Red means go fix something. Yellow means keep working, it's still running. Green means ship it. One glance at the menu bar is the whole check. ⌥⌘S opens the list from anywhere.",
+              body: "Station watches every open PR you have. Red means go fix something. Yellow means keep working, it's still running. Green means ship it. One glance at the menu bar is the whole check. ⌥⌘S opens the list from anywhere.",
               art: AnyView(HStack(spacing: 10) {
                   Circle().fill(colorProfile.color(for: .failure)).frame(width: 14, height: 14)
                   Circle().fill(colorProfile.color(for: .pending)).frame(width: 14, height: 14)

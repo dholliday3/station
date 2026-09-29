@@ -7,7 +7,7 @@ enum TokenSource {
     enum Kind: String, Equatable { case gh = "gh CLI", keychain = "Token" }
     struct Found { let token: String; let kind: Kind }
 
-    private static let service = "com.timwheeler.stoplight"
+    private static let service = "com.timwheeler.station"
     private static let account = "github-token"
     private static let ghCandidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/opt/local/bin/gh", "/usr/bin/gh"]
     /// Set in Settings when `gh` lives somewhere unusual (a custom Homebrew prefix, for example).

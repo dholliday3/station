@@ -3,7 +3,7 @@ import SwiftUI
 import OSLog
 import StoplightCore
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight.widget", category: "timeline")
+private let log = Logger(subsystem: "com.timwheeler.station.widget", category: "timeline")
 
 /// US-007. Reads prs.json from the App Group. Never touches the network.
 struct Entry: TimelineEntry {
@@ -67,7 +67,7 @@ struct StoplightWidgetView: View {
                 HStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { _ in Circle().fill(Color.secondary.opacity(0.25)).frame(width: 14, height: 14) }
                 }
-                Text("Open Stoplight and sign in").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text("Open Station and sign in").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
         }
     }
@@ -110,7 +110,7 @@ struct SmallView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .widgetURL(URL(string: "stoplight://open"))
+        .widgetURL(URL(string: "station://panel"))
     }
 
     private func light(_ s: CIState, _ label: String) -> some View {
@@ -148,7 +148,7 @@ struct ListView: View {
                     Text(row.section.title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                         .padding(.top, i == 0 ? 0 : 4)
                 }
-                Link(destination: URL(string: "stoplight://pr/\(row.pr.id)") ?? row.pr.url) {
+                Link(destination: URL(string: "station://panel/\(row.pr.id)") ?? row.pr.url) {
                     HStack(spacing: 8) {
                         if row.pr.status == .merged && row.pr.checks.isEmpty {
                             Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(Color.githubMerged).frame(width: 8)
@@ -180,7 +180,7 @@ struct StoplightWidget: Widget {
         StaticConfiguration(kind: "StoplightStatus", provider: Provider()) { entry in
             StoplightWidgetView(entry: entry).containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("Stoplight")
+        .configurationDisplayName("Station")
         .description("CI status for your open pull requests.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }

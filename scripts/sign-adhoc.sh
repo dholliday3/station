@@ -10,13 +10,13 @@ cat > "$TMP/widget.entitlements" <<'PLIST'
 <plist version="1.0"><dict>
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.network.client</key><true/>
-  <key>com.apple.security.application-groups</key><array><string>group.com.timwheeler.stoplight</string></array>
+  <key>com.apple.security.application-groups</key><array><string>group.com.timwheeler.station</string></array>
 </dict></plist>
 PLIST
 cat > "$TMP/app.entitlements" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>com.apple.security.application-groups</key><array><string>group.com.timwheeler.stoplight</string></array>
+  <key>com.apple.security.application-groups</key><array><string>group.com.timwheeler.station</string></array>
 </dict></plist>
 PLIST
 codesign --force --sign - --options runtime --entitlements "$TMP/widget.entitlements" "$APPEX"

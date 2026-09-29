@@ -3,7 +3,7 @@ import Foundation
 import Observation
 import OSLog
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "Updater")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "Updater")
 
 /// Sparkle-lite (US-020). Checks GitHub Releases, downloads the notarized zip, verifies it with
 /// Gatekeeper, swaps the bundle in place, relaunches. Unsandboxed, so no helper tool needed.
@@ -25,7 +25,7 @@ final class Updater {
         case failed(String)
     }
 
-    static let repo = "timmywheels/stoplight"
+    static let repo = "timmywheels/station"
     static let checkInterval: TimeInterval = 6 * 60 * 60
 
     private(set) var latest: Release?
@@ -47,7 +47,7 @@ final class Updater {
         do {
             var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
             req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            req.setValue("Stoplight/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+            req.setValue("Station/\(currentVersion)", forHTTPHeaderField: "User-Agent")
             let (data, _) = try await URLSession.shared.data(for: req)
             struct R: Decodable {
                 struct Asset: Decodable { let name: String; let browser_download_url: URL }
@@ -70,16 +70,16 @@ final class Updater {
     func install() async {
         guard let release = latest, updateAvailable else { return }
         state = .downloading
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("stoplight-update-\(UUID().uuidString)")
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("station-update-\(UUID().uuidString)")
         do {
             try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
             let (file, _) = try await URLSession.shared.download(from: release.zipURL)
-            let zip = tmp.appendingPathComponent("Stoplight.zip")
+            let zip = tmp.appendingPathComponent("Station.zip")
             try FileManager.default.moveItem(at: file, to: zip)
 
             state = .installing
             try run("/usr/bin/ditto", "-x", "-k", zip.path, tmp.path)
-            let newApp = tmp.appendingPathComponent("Stoplight.app")
+            let newApp = tmp.appendingPathComponent("Station.app")
             guard FileManager.default.fileExists(atPath: newApp.path) else { throw Err.badArchive }
 
             // Refuse anything Gatekeeper wouldn't launch, and anything that isn't us.
@@ -125,7 +125,7 @@ final class Updater {
         var errorDescription: String? {
             switch self {
             case .noAsset: "Release has no zip asset"
-            case .badArchive: "Downloaded archive didn't contain Stoplight.app"
+            case .badArchive: "Downloaded archive didn't contain Station.app"
             case .wrongBundle: "Downloaded app has a different bundle identifier"
             case .command(let c, let code): "\(URL(fileURLWithPath: c).lastPathComponent) failed (\(code)). The update was not installed."
             }

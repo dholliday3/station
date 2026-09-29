@@ -1,6 +1,6 @@
 import AppKit
 
-/// Agents connected to this repo through `onramp mcp` (each MCP session
+/// Agents connected to this repo through `station mcp` (each MCP session
 /// writes `agent-<pid>.json` next to comments.json while it runs).
 enum ConnectedAgents {
     /// A live agent session and what it did last (its MCP server records each tool call).
@@ -93,7 +93,7 @@ enum AgentTools {
     }
 }
 
-/// One agent onramp can register its MCP server with. Nothing is
+/// One agent station can register its MCP server with. Nothing is
 /// registered until the user clicks Connect (opt-in, reversible).
 struct AgentIntegration {
     /// `connected` says how ("plugin", "MCP server"), since there's more than one way.
@@ -103,7 +103,7 @@ struct AgentIntegration {
     }
 
     let name: String
-    /// The command it runs as ("claude"), if it's a CLI you can point Onramp at.
+    /// The command it runs as ("claude"), if it's a CLI you can point Station at.
     var tool: String? = nil
     let check: () -> State
     let connect: () throws -> Void
@@ -112,16 +112,16 @@ struct AgentIntegration {
     /// The command agents launch: the installed symlink if present, else this binary.
     static var command: String {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let link = [".local/bin/onramp", ".local/bin/ramp"].map { home.appendingPathComponent($0).path }
-            .first { FileManager.default.isExecutableFile(atPath: $0) } ?? home.appendingPathComponent(".local/bin/onramp").path
+        let link = [".local/bin/station"].map { home.appendingPathComponent($0).path }
+            .first { FileManager.default.isExecutableFile(atPath: $0) } ?? home.appendingPathComponent(".local/bin/station").path
         if FileManager.default.isExecutableFile(atPath: link) { return link }
         return URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
     }
 
-    /// Claude Code gets a plugin (so the command is /onramp:address-comments)
+    /// Claude Code gets a plugin (so the command is /station:address-comments)
     /// that bundles the MCP server; install.sh puts it here.
     static let claudePlugin = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".config/onramp/integrations/claude-code").path
+        .appendingPathComponent(".config/station/integrations/claude-code").path
 
     static let all: [AgentIntegration] = [
         AgentIntegration(
@@ -129,30 +129,30 @@ struct AgentIntegration {
             tool: "claude",
             check: {
                 guard let claude = AgentTools.quoted("claude") else { return .notInstalled }
-                // Either way counts: the plugin (what Connect installs), or a plain `claude mcp add onramp`.
-                if shell("\(claude) plugin list").output.contains("onramp@onramp") { return .connected("plugin") }
-                if shell("\(claude) mcp get onramp").status == 0 { return .connected("MCP server") }
+                // Either way counts: the plugin (what Connect installs), or a plain `claude mcp add station`.
+                if shell("\(claude) plugin list").output.contains("station@station") { return .connected("plugin") }
+                if shell("\(claude) mcp get station").status == 0 { return .connected("MCP server") }
                 return .notConnected
             },
             connect: {
                 guard let claude = AgentTools.quoted("claude") else { throw CoreError.Io(message: "Couldn't find the claude command") }
-                if !shell("\(claude) plugin marketplace list").output.contains("onramp") {
+                if !shell("\(claude) plugin marketplace list").output.contains("station") {
                     try shell("\(claude) plugin marketplace add '\(claudePlugin)'").orThrow()
                 }
-                try shell("\(claude) plugin install onramp@onramp").orThrow()
+                try shell("\(claude) plugin install station@station").orThrow()
             },
             disconnect: {
                 // Undo whichever way it was connected (both, if both).
                 guard let claude = AgentTools.quoted("claude") else { return }
-                let plugin = shell("\(claude) plugin list").output.contains("onramp@onramp") ? shell("\(claude) plugin uninstall onramp@onramp") : nil
-                let server = shell("\(claude) mcp get onramp").status == 0 ? shell("\(claude) mcp remove onramp") : nil
+                let plugin = shell("\(claude) plugin list").output.contains("station@station") ? shell("\(claude) plugin uninstall station@station") : nil
+                let server = shell("\(claude) mcp get station").status == 0 ? shell("\(claude) mcp remove station") : nil
                 try plugin?.orThrow()
                 try server?.orThrow()
             }
         ),
         cli(name: "Codex", tool: "codex",
-            add: "mcp add onramp -- '\(command)' mcp",
-            remove: "mcp remove onramp"),
+            add: "mcp add station -- '\(command)' mcp",
+            remove: "mcp remove station"),
         cursor,
     ]
 
@@ -164,7 +164,7 @@ struct AgentIntegration {
             tool: tool,
             check: {
                 guard let exe = AgentTools.quoted(tool) else { return .notInstalled }
-                return shell("\(exe) mcp get onramp").status == 0 ? .connected("MCP server") : .notConnected
+                return shell("\(exe) mcp get station").status == 0 ? .connected("MCP server") : .notConnected
             },
             connect: {
                 guard let exe = AgentTools.quoted(tool) else { throw CoreError.Io(message: "Couldn't find the \(tool) command") }
@@ -182,19 +182,19 @@ struct AgentIntegration {
             let dir = cursorConfig.deletingLastPathComponent().path
             guard FileManager.default.fileExists(atPath: dir) else { return .notInstalled }
             let servers = (readJSON(cursorConfig)["mcpServers"] as? [String: Any]) ?? [:]
-            return servers["onramp"] != nil ? .connected("~/.cursor/mcp.json") : .notConnected
+            return servers["station"] != nil ? .connected("~/.cursor/mcp.json") : .notConnected
         },
         connect: {
             var json = readJSON(cursorConfig)
             var servers = (json["mcpServers"] as? [String: Any]) ?? [:]
-            servers["onramp"] = ["command": command, "args": ["mcp"]]
+            servers["station"] = ["command": command, "args": ["mcp"]]
             json["mcpServers"] = servers
             try writeJSON(json, cursorConfig)
         },
         disconnect: {
             var json = readJSON(cursorConfig)
             var servers = (json["mcpServers"] as? [String: Any]) ?? [:]
-            servers["onramp"] = nil
+            servers["station"] = nil
             json["mcpServers"] = servers
             try writeJSON(json, cursorConfig)
         }
@@ -225,7 +225,7 @@ struct AgentIntegration {
     /// that's how `claude` went missing while `codex` (Homebrew) was found.
     static let userPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let marker = "__ONRAMP_PATH__"
+        let marker = "__STATION_PATH__"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         p.arguments = ["-ilc", "print -r -- \"\(marker)${PATH}\(marker)\""]
@@ -267,7 +267,7 @@ struct AgentIntegration {
     }
 }
 
-/// Opt-in: connect (or disconnect) each installed agent to onramp's MCP server.
+/// Opt-in: connect (or disconnect) each installed agent to station's MCP server.
 final class AgentConnectViewController: NSViewController {
     private var rows: [(agent: AgentIntegration, status: NSTextField, button: NSButton)] = []
     private var states: [AgentIntegration.State] = []
@@ -276,7 +276,7 @@ final class AgentConnectViewController: NSViewController {
         let stack = PopoverUI.stack([])
         PopoverUI.add(PopoverUI.title("Connect your coding agent"), to: stack, spacingAfter: 6)
         PopoverUI.add(PopoverUI.note("""
-        Adds Onramp as an MCP server in the agent's settings, so it can read your review \
+        Adds Station as an MCP server in the agent's settings, so it can read your review \
         comments, reply and resolve them when you ask. Nothing leaves your machine, and you can \
         disconnect anytime.
         """), to: stack, spacingAfter: 14)
@@ -304,11 +304,11 @@ final class AgentConnectViewController: NSViewController {
             states.append(.checking)
         }
         stack.setCustomSpacing(16, after: stack.arrangedSubviews.last!)
-        PopoverUI.add(PopoverUI.note("Then ask your agent to “address my Onramp comments”. In Claude Code: /onramp:address-comments", size: 11.5), to: stack, spacingAfter: 12)
+        PopoverUI.add(PopoverUI.note("Then ask your agent to “address my Station comments”. In Claude Code: /station:address-comments", size: 11.5), to: stack, spacingAfter: 12)
         let again = NSButton(title: "Check Again", target: self, action: #selector(checkAgain))
         again.bezelStyle = .push
         again.controlSize = .small
-        again.toolTip = "Look for each agent and its Onramp connection again (after installing an agent, or setting it up in a terminal)"
+        again.toolTip = "Look for each agent and its Station connection again (after installing an agent, or setting it up in a terminal)"
         PopoverUI.add(PopoverUI.row([], [again]), to: stack)
         view = PopoverUI.container(stack)
         preferredContentSize = view.frame.size
@@ -341,7 +341,7 @@ final class AgentConnectViewController: NSViewController {
                 let chosen = AgentTools.paths[tool].flatMap { $0.isEmpty ? nil : $0 }
                 row.status.stringValue = chosen.map { "\($0) isn't there or can't run" } ?? "Couldn't find the \(tool) command"
                 row.status.toolTip = "Looked in your shell's PATH and the usual install folders:\n" + AgentIntegration.userPath.replacingOccurrences(of: ":", with: "\n")
-                    + "\n\nChoose… to point Onramp at it (saved as agent_paths in settings.json)."
+                    + "\n\nChoose… to point Station at it (saved as agent_paths in settings.json)."
                 row.button.isEnabled = true; row.button.title = "Choose…" // where is it? you say, we don't guess
             } else {
                 row.status.stringValue = "Not installed"
@@ -355,7 +355,7 @@ final class AgentConnectViewController: NSViewController {
         }
     }
 
-    /// Point Onramp at an agent's command (saved as agent_paths in settings.json), then check again.
+    /// Point Station at an agent's command (saved as agent_paths in settings.json), then check again.
     private func choose(_ i: Int) {
         guard let tool = rows[i].agent.tool, let window = view.window else { return }
         let panel = NSOpenPanel()

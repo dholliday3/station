@@ -1,4 +1,4 @@
-//! onramp-core: everything onramp computes. The Swift app only draws.
+//! station-core: everything station computes. The Swift app only draws.
 //!
 //! Modules grow here by feature (diff, repo, later comments/agent); this file
 //! re-exports what Swift sees through UniFFI.

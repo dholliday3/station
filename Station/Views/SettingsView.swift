@@ -26,7 +26,7 @@ struct SettingsView: View {
 }
 
 private struct GeneralTab: View {
-    static let repo = URL(string: "https://github.com/timmywheels/stoplight")!
+    static let repo = URL(string: "https://github.com/timmywheels/station")!
 
     @Bindable var model: AppModel
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -59,15 +59,15 @@ private struct GeneralTab: View {
                             .foregroundStyle(TokenSource.ghPath() == nil ? prefs.colorProfile.color(for: .failure) : .secondary)
                         if !prefs.ghPath.isEmpty { Button("Automatic") { prefs.ghPath = ""; reauth() } }
                         Button("Choose…") { chooseGH() }
-                            .help("Point Stoplight at a gh binary somewhere unusual, like a managed Homebrew prefix.")
+                            .help("Point Station at a gh binary somewhere unusual, like a managed Homebrew prefix.")
                     }
                 }
-                .help("Stoplight reads your GitHub token from this gh install, so it never asks for a password.")
+                .help("Station reads your GitHub token from this gh install, so it never asks for a password.")
             } header: {
                 Text("Account")
             } footer: {
                 Text(TokenSource.ghPath() == nil
-                     ? "Stoplight couldn't find gh. Choose it, or install the GitHub CLI."
+                     ? "Station couldn't find gh. Choose it, or install the GitHub CLI."
                      : "Found on your shell's PATH. Choose another if gh lives somewhere unusual.")
             }
 
@@ -85,8 +85,8 @@ private struct GeneralTab: View {
             }
 
             Section("Startup") {
-                Toggle("Open Stoplight at login", isOn: $launchAtLogin)
-                    .help("Registers Stoplight as a macOS login item. It starts hidden, as a menu bar app.")
+                Toggle("Open Station at login", isOn: $launchAtLogin)
+                    .help("Registers Station as a macOS login item. It starts hidden, as a menu bar app.")
                     .onChange(of: launchAtLogin) { _, on in
                         do {
                             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
@@ -108,25 +108,25 @@ private struct GeneralTab: View {
                         .help("Replays the first-run walkthrough in the popover.")
                 }
                 LabeledContent("Source") {
-                    Link("github.com/timmywheels/stoplight", destination: Self.repo)
+                    Link("github.com/timmywheels/station", destination: Self.repo)
                         .help("Issues and pull requests welcome.")
                 }
                 LabeledContent("Quit") {
-                    Button("Quit Stoplight") { NSApp.terminate(nil) }
+                    Button("Quit Station") { NSApp.terminate(nil) }
                         .keyboardShortcut("q")
-                        .help("Stops watching your PRs until you open Stoplight again.")
+                        .help("Stops watching your PRs until you open Station again.")
                 }
             } header: {
                 Text("About")
             } footer: {
-                Text("Made by [@timmywheels](https://github.com/timmywheels). Stoplight is open source.")
+                Text("Made by [@timmywheels](https://github.com/timmywheels). Station is open source.")
             }
         }
         .formStyle(.grouped)
     }
 }
 
-/// How Stoplight looks. The bulky parts stay folded until asked for.
+/// How Station looks. The bulky parts stay folded until asked for.
 private struct DisplayTab: View {
     @Bindable var model: AppModel
 
@@ -303,15 +303,15 @@ private struct RowActionsEditor: View {
                     Text(a.title).foregroundStyle(on ? .primary : .secondary)
                     Spacer()
                     if a == .onramp, !PRActions.onrampInstalled {
-                        // The button only shows once Onramp is installed; say where to get it.
+                        // The button only shows once Station is installed; say where to get it.
                         Link(destination: PRActions.onrampDownload) {
                             HStack(spacing: 2) {
-                                Text("Get Onramp")
+                                Text("Get Station")
                                 Image(systemName: "arrow.up.right").imageScale(.small)
                             }
                             .font(.caption)
                         }
-                        .help("Onramp is a Mac app for reviewing a PR's full diff with your agents. Install it and this button appears on PRs.")
+                        .help("Station is a Mac app for reviewing a PR's full diff with your agents. Install it and this button appears on PRs.")
                     }
                     if on { Image(systemName: "line.3.horizontal").foregroundStyle(.quaternary) }
                 }

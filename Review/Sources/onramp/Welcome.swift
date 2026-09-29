@@ -1,6 +1,6 @@
 import AppKit
 
-/// First launch (nothing recent): what Onramp is, your repos, and a place to
+/// First launch (nothing recent): what Station is, your repos, and a place to
 /// paste a pull request link. Replaces a bare file picker.
 @MainActor
 final class WelcomeWindowController: NSWindowController {
@@ -26,7 +26,7 @@ final class WelcomeWindowController: NSWindowController {
         let icon = NSImageView()
         icon.image = NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
-        let title = label("Welcome to Onramp", size: 22, weight: .semibold)
+        let title = label("Welcome to Station", size: 22, weight: .semibold)
         let subtitle = label("Review your agent's changes and pull requests, and talk them through on the diff.", size: 13, color: .secondaryLabelColor)
         subtitle.alignment = .center
         subtitle.maximumNumberOfLines = 2
@@ -125,7 +125,7 @@ final class WelcomeWindowController: NSWindowController {
 
     @objc private func openPR() {
         guard let (slug, n) = Self.parsePR(prField.stringValue),
-              var c = URLComponents(string: "onramp://pr") else {
+              var c = URLComponents(string: "station://pr") else {
             error.stringValue = "Paste a pull request link, like github.com/owner/repo/pull/123"
             error.isHidden = false
             return

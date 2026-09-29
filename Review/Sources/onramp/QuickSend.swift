@@ -100,7 +100,7 @@ final class QuickSend {
         }.joined(separator: "\n")
         let context = reviewContext(repoRoot: repo, configDir: onrampConfigDir.path).text
         return """
-        You're answering one code review comment in Onramp. It's assigned to you; don't look for other comments.
+        You're answering one code review comment in Station. It's assigned to you; don't look for other comments.
 
         The comment thread, on \(path) line \(line + 1):
         \(conversation)

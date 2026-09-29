@@ -99,7 +99,7 @@ final class CommentInput: NSView {
     func setGitHub(_ on: Bool?) {
         githubBox.isHidden = on == nil
         githubBox.state = on == true ? .on : .off
-        githubBox.toolTip = "Checked: this goes to the pull request on GitHub. Unchecked: only in Onramp, for you and your agent."
+        githubBox.toolTip = "Checked: this goes to the pull request on GitHub. Unchecked: only in Station, for you and your agent."
         updateHint()
         needsLayout = true
     }
@@ -456,7 +456,7 @@ final class CommentThreadView: NSView {
                 head.append(NSAttributedString(string: "  Pending", attributes: [.font: CommentMetrics.metaFont, .foregroundColor: DiffStyle.accent]))
             }
             if postsToGitHub != nil { // a PR: say which words are on GitHub and which only here
-                let tag = e.githubId != nil ? "  on GitHub" : e.local || t.entries.first?.local == true ? "  only in Onramp" : nil
+                let tag = e.githubId != nil ? "  on GitHub" : e.local || t.entries.first?.local == true ? "  only in Station" : nil
                 if let tag { head.append(NSAttributedString(string: tag, attributes: meta)) }
             }
             head.draw(at: NSPoint(x: p, y: y))

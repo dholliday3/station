@@ -51,7 +51,7 @@ enum Syntax {
     // scrolling for the CPU.
     private static let queue: OperationQueue = {
         let q = OperationQueue()
-        q.name = "onramp.syntax"
+        q.name = "station.syntax"
         q.maxConcurrentOperationCount = 2
         q.qualityOfService = .utility
         return q

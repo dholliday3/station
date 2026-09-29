@@ -1,10 +1,17 @@
 import AppKit
 
-/// onramp:// links, e.g. from Stoplight:
-///   onramp://pr?repo=owner/name&number=123   view that PR (as a tab)
-///   onramp://open?path=/path/to/repo          open a project
+/// station:// links, e.g. from Station:
+///   station://pr?repo=owner/name&number=123   view that PR (as a tab)
+///   station://open?path=/path/to/repo          open a project
 @MainActor
 enum DeepLinks {
+    /// station://pr?repo=…&number=… and station://open?path=… are reviews; station://panel… and
+    /// station://agent/… belong to the menu bar (the host handles those).
+    static func isReview(_ url: URL) -> Bool {
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return (url.host == "pr" && q.contains { $0.name == "repo" }) || (url.host == "open" && q.contains { $0.name == "path" })
+    }
+
     static func handle(_ url: URL, app: AppDelegate) {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func value(_ name: String) -> String? { q.first { $0.name == name }?.value }
@@ -27,7 +34,7 @@ enum DeepLinks {
 
     /// Up front, never behind another app's windows (links arrive while you're elsewhere).
     static func alert(_ title: String, _ detail: String) {
-        guard ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == nil else { return log("alert: \(title) — \(detail)") }
+        guard ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil else { return log("alert: \(title) — \(detail)") }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title
@@ -37,7 +44,7 @@ enum DeepLinks {
 
     /// Self-tests read these (stderr); normal runs stay quiet.
     static func log(_ s: String) {
-        guard ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] != nil else { return }
+        guard ProcessInfo.processInfo.environment["STATION_SELFTEST"] != nil else { return }
         FileHandle.standardError.write("[link] \(s)\n".data(using: .utf8)!)
     }
 }
@@ -47,7 +54,7 @@ enum DeepLinks {
 /// matched by git remote. Only if none of that finds it do we ask.
 @MainActor
 enum Clones {
-    private static func key(_ slug: String) -> String { "onramp.clone." + slug.lowercased() }
+    private static func key(_ slug: String) -> String { "station.clone." + slug.lowercased() }
 
     /// Where people keep their clones, searched two levels deep (~/dev/org/repo).
     /// (Never Documents, Desktop or Downloads: macOS would ask you to allow that.)
@@ -57,7 +64,7 @@ enum Clones {
     /// Your home folder (self-tests search a scratch one).
     private static var home: URL {
         let env = ProcessInfo.processInfo.environment
-        if env["ONRAMP_SELFTEST"] != nil, let h = env["ONRAMP_SEARCH_HOME"] { return URL(fileURLWithPath: h) }
+        if env["STATION_SELFTEST"] != nil, let h = env["STATION_SEARCH_HOME"] { return URL(fileURLWithPath: h) }
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
@@ -136,8 +143,8 @@ enum Clones {
     /// Ask where the clone is (once; remembered).
     static func ask(_ slug: String) -> String? {
         // Self-test: answer the panel with this folder (as if you'd picked it).
-        if ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] != nil {
-            guard let path = ProcessInfo.processInfo.environment["ONRAMP_CLONE_PATH"] else { DeepLinks.log("would ask for \(slug)"); return nil }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] != nil {
+            guard let path = ProcessInfo.processInfo.environment["STATION_CLONE_PATH"] else { DeepLinks.log("would ask for \(slug)"); return nil }
             return accept(URL(fileURLWithPath: path), slug)
         }
         NSApp.activate(ignoringOtherApps: true) // in front, so nothing that follows opens behind other apps
@@ -145,7 +152,7 @@ enum Clones {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.prompt = "Use This Clone"
-        panel.message = "Where's your local clone of \(slug)? (Onramp remembers it.)"
+        panel.message = "Where's your local clone of \(slug)? (Station remembers it.)"
         if let dev = codeFolders.dropLast().map({ home.appendingPathComponent($0) })
             .first(where: { FileManager.default.fileExists(atPath: $0.path) }) { panel.directoryURL = dev }
         guard panel.runModal() == .OK, let url = panel.url else { return nil }

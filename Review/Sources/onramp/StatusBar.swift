@@ -29,7 +29,7 @@ final class ProgressBarView: NSView {
     }
 }
 
-/// onramp's button look (toolbar pickers and status bar): a 24pt capsule
+/// station's button look (toolbar pickers and status bar): a 24pt capsule
 /// drawn by the button itself, so height and padding are ours. With 8pt around
 /// it, its corners follow the window's rounded corner.
 class CapsuleButton: NSButton {

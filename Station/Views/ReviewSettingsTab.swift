@@ -52,7 +52,14 @@ struct ReviewSettingsTab: View {
                     InfoLabel("Claude session", "A Claude session primed on the diff answers comments in seconds. It runs while a review is open.")
                 }
             }
-            Section("Dock") {
+            Section("App") {
+                Picker(selection: string("app_icon", "automatic")) {
+                    Text("Match light or dark mode").tag("automatic")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                } label: {
+                    InfoLabel("Icon", "The Dock icon. Finder always shows the dark one: changing the app's own icon would break its signature.")
+                }
                 Toggle(isOn: Binding(get: { !bool("dock_icon", true).wrappedValue }, set: { file.set("dock_icon", !$0) })) {
                     InfoLabel("Hide the Dock icon", "Station lives in the menu bar only. Open windows from the dots' menu; the app menus (File, Edit…) aren't shown then.")
                 }

@@ -23,7 +23,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     private let updateButton = CapsuleButton()
     private var gitStatus: BranchStatus?
     private var gitPopover: NSPopover?
-    /// Agents with onramp set up (from each agent's CLI; checked in the background).
+    /// Agents with station set up (from each agent's CLI; checked in the background).
     private var configuredAgents: [String] = []
     private var agentChecks = 0
     /// What's being reviewed (see `reviewBase`); chosen in the toolbar's Changes menu.
@@ -358,7 +358,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     func startSession(fresh: Bool = false, force: Bool = false) {
         let setting = Style.shared.settings.agentSession
         guard force || setting == "auto", setting != "off", QuickSend.target(repo: repoPath) == .claude, let base else { return }
-        if let mode = ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"], mode != "session" { return } // tests don't start real agents
+        if let mode = ProcessInfo.processInfo.environment["STATION_SELFTEST"], mode != "session" { return } // tests don't start real agents
         let prNumber = base.mode == .pullRequest ? choice.pr.map(Int.init) : nil
         let key = repoPath + "|" + (prNumber.map { "pr-\($0)" } ?? (base.target ?? base.branch ?? "working-tree"))
         if let s = session, s.key == key, s.isRunning, !fresh { return }
@@ -436,7 +436,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
 
     /// Reviewers set to run when a PR opens (`when = "pr_open"`), once per PR per tab.
     private func runAutoReviewers() {
-        guard ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == nil, base?.mode == .pullRequest, let n = choice.pr else { return }
+        guard ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil, base?.mode == .pullRequest, let n = choice.pr else { return }
         let key = "\(n)"
         guard !autoReviewed.contains(key), let r = ReviewerRun.all(repo: repoPath).first(where: { $0.when == "pr_open" }) else { return }
         autoReviewed.insert(key)
@@ -568,7 +568,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
             let title = u.state == .available ? "Update to \(u.latest?.version ?? "")" : u.state == .downloading ? "Downloading…" : "Installing…"
             updateButton.setText(title)
             updateButton.contentTintColor = DiffStyle.accent
-            updateButton.toolTip = "Onramp \(u.latest?.version ?? "") is available (you have \(u.currentVersion))"
+            updateButton.toolTip = "Station \(u.latest?.version ?? "") is available (you have \(u.currentVersion))"
         }
         needsLayout = true
     }
@@ -576,7 +576,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     @objc private func updateClicked() {
         guard Updater.shared.state == .available, let latest = Updater.shared.latest, let window else { return }
         let alert = NSAlert()
-        alert.messageText = "Install Onramp \(latest.version) and relaunch?"
+        alert.messageText = "Install Station \(latest.version) and relaunch?"
         alert.informativeText = "You have \(Updater.shared.currentVersion). It takes a few seconds."
         alert.addButton(withTitle: "Install and Relaunch")
         alert.addButton(withTitle: "Release Notes")
@@ -1157,7 +1157,7 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
             refreshGitHubToggles()
         }
     }
-    private func postKey(_ pr: Int) -> String { "onramp.postToGitHub.\(repoPath)#\(pr)" }
+    private func postKey(_ pr: Int) -> String { "station.postToGitHub.\(repoPath)#\(pr)" }
     /// What the "Post to GitHub" boxes show (nil: hidden).
     private var githubToggle: Bool? { githubPR == nil ? nil : postToGitHub }
 
@@ -1406,7 +1406,7 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
         var marks: [(String, CFTimeInterval)] = [("start", CACurrentMediaTime())]
         func mark(_ n: String) { marks.append((n, CACurrentMediaTime())) }
         defer {
-            if ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == "open-time" {
+            if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "open-time" {
                 let parts = zip(marks.dropFirst(), marks).map { String(format: "%@ %.1f", $0.0, ($0.1 - $1.1) * 1000) }
                 FileHandle.standardError.write(("[open] " + parts.joined(separator: ", ") + "\n").data(using: .utf8)!)
             }

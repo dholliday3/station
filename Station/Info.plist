@@ -40,8 +40,7 @@
 			<string>com.timwheeler.station</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>onramp</string>
-				<string>stoplight</string>
+				<string>station</string>
 			</array>
 		</dict>
 	</array>

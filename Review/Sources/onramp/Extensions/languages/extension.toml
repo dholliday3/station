@@ -2,8 +2,8 @@ id = "languages"
 name = "Languages"
 version = "1.0.0"
 api_version = 1
-description = "Syntax highlighting for common languages (tree-sitter grammars built into onramp)."
-authors = ["onramp"]
+description = "Syntax highlighting for common languages (tree-sitter grammars built into station)."
+authors = ["station"]
 
 # Each entry maps file types to a grammar. Add your own in an extension of
 # yours, optionally with `highlights = "path/to/highlights.scm"` to replace

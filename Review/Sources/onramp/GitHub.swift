@@ -126,8 +126,8 @@ enum GitHub {
     static func gh(_ args: [String], repo: String) throws -> Data {
         guard let path = ghPath() else {
             throw Failure(description: configuredPath.isEmpty
-                ? "Couldn't find the GitHub CLI (gh). Install it (brew install gh), or show Onramp where it is: Onramp → Locate GitHub CLI…"
-                : "gh_path in settings.json (\(configuredPath)) isn't a program that runs. Onramp → Locate GitHub CLI… to pick it again.", notFound: true)
+                ? "Couldn't find the GitHub CLI (gh). Install it (brew install gh), or show Station where it is: Station → Locate GitHub CLI…"
+                : "gh_path in settings.json (\(configuredPath)) isn't a program that runs. Station → Locate GitHub CLI… to pick it again.", notFound: true)
         }
         var r = try run(path, args, repo: repo, token: cachedToken(gh: path))
         let noGitHubRemote = r.err.contains("none of the git remotes") || r.err.contains("no git remotes")
@@ -420,7 +420,7 @@ enum GitHub {
 
 /// PRs opened recently in a repo, for the Changes menu.
 enum RecentPRs {
-    private static func key(_ repo: String) -> String { "onramp.recentPRs." + repo }
+    private static func key(_ repo: String) -> String { "station.recentPRs." + repo }
 
     static func list(repo: String) -> [(number: Int, title: String)] {
         (UserDefaults.standard.array(forKey: key(repo)) as? [[String: Any]] ?? []).compactMap { d in
@@ -435,7 +435,7 @@ enum RecentPRs {
     }
 }
 
-/// Where gh is, for when it isn't anywhere Onramp looks: saved as gh_path in settings.json.
+/// Where gh is, for when it isn't anywhere Station looks: saved as gh_path in settings.json.
 @MainActor
 enum GitHubCLI {
     /// Pick the gh binary (a sheet on `window`, else a panel). `done` runs once it's saved.

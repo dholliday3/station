@@ -3,8 +3,8 @@ import Foundation
 /// Replies you've seen. A thread where an agent spoke last "needs you" until you
 /// open it, swipe it read, or Mark All as Read; a newer reply makes it need you again.
 enum ReadMarks {
-    private static let key = "onramp.readThreads"
-    static let changed = Notification.Name("onramp.readMarksChanged")
+    private static let key = "station.readThreads"
+    static let changed = Notification.Name("station.readMarksChanged")
 
     /// Thread id → time of the newest entry when you read it.
     private static var marks: [String: UInt64] {

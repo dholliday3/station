@@ -119,8 +119,8 @@ final class ReviewFile {
     private lazy var oldLineStarts: [Int] = Self.lineStarts(of: oldText as NSString)
 
     /// Start highlighting (once); `done` runs when colors arrive.
-    /// ONRAMP_NO_SYNTAX=1 turns highlighting off (for measuring its cost).
-    static let syntaxOff = ProcessInfo.processInfo.environment["ONRAMP_NO_SYNTAX"] != nil
+    /// STATION_NO_SYNTAX=1 turns highlighting off (for measuring its cost).
+    static let syntaxOff = ProcessInfo.processInfo.environment["STATION_NO_SYNTAX"] != nil
 
     @MainActor func requestSyntax(_ done: @escaping @MainActor () -> Void) {
         guard !syntaxRequested, !Self.syntaxOff else { return }

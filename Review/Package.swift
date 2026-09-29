@@ -10,7 +10,7 @@ let package = Package(
         .target(
             name: "onramp",
             dependencies: ["onramp_coreFFI"],
-            resources: [.copy("Extensions"), .copy("Reviewers"), .copy("AppIcon.icns")] // built-in extensions (fonts, themes, languages), the app icon
+            resources: [.copy("Extensions"), .copy("Reviewers")] // built-in extensions (fonts, themes, languages), the app icon
         ),
     ]
 )

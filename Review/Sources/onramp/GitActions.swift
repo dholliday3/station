@@ -45,7 +45,7 @@ final class CommitViewController: NSViewController {
         scroll.heightAnchor.constraint(equalToConstant: 84).isActive = true
         PopoverUI.add(scroll, to: stack, spacingAfter: 10)
 
-        pushAfter.state = (UserDefaults.standard.object(forKey: "onramp.pushAfterCommit") as? Bool ?? true) ? .on : .off
+        pushAfter.state = (UserDefaults.standard.object(forKey: "station.pushAfterCommit") as? Bool ?? true) ? .on : .off
         pushAfter.title = status.upstream == nil ? "Publish the branch after committing" : "Push after committing"
         PopoverUI.add(pushAfter, to: stack, spacingAfter: 10)
         errorLabel.textColor = .systemRed
@@ -73,7 +73,7 @@ final class CommitViewController: NSViewController {
     @objc private func commitClicked() {
         let text = message.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return show("Write a commit message first.") }
-        UserDefaults.standard.set(pushAfter.state == .on, forKey: "onramp.pushAfterCommit")
+        UserDefaults.standard.set(pushAfter.state == .on, forKey: "station.pushAfterCommit")
         if let error = onCommit?(text, pushAfter.state == .on) { show(error) }
     }
 
@@ -118,12 +118,12 @@ final class MergeViewController: NSViewController {
         }
         stack.setCustomSpacing(14, after: stack.arrangedSubviews.last!)
         method.addItems(withTitles: info.methods.map(\.title))
-        let saved = UserDefaults.standard.string(forKey: "onramp.mergeMethod").flatMap(GitHub.MergeMethod.init(rawValue:))
+        let saved = UserDefaults.standard.string(forKey: "station.mergeMethod").flatMap(GitHub.MergeMethod.init(rawValue:))
         if let saved, let i = info.methods.firstIndex(of: saved) { method.selectItem(at: i) }
         let methodLabel = NSTextField(labelWithString: "Method")
         methodLabel.font = .systemFont(ofSize: 13)
         PopoverUI.add(PopoverUI.row([methodLabel], [method]), to: stack, spacingAfter: 10)
-        deleteBranch.state = info.deleteBranchDefault || UserDefaults.standard.bool(forKey: "onramp.deleteBranchOnMerge") ? .on : .off
+        deleteBranch.state = info.deleteBranchDefault || UserDefaults.standard.bool(forKey: "station.deleteBranchOnMerge") ? .on : .off
         PopoverUI.add(deleteBranch, to: stack, spacingAfter: 2)
         PopoverUI.add(PopoverUI.note("On GitHub, and locally too if you're on it (you're switched to the base branch).", size: 11), to: stack, spacingAfter: 12)
         errorLabel.textColor = .systemRed
@@ -183,8 +183,8 @@ final class MergeViewController: NSViewController {
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
             MainActor.assumeIsolated {
-                UserDefaults.standard.set(m.rawValue, forKey: "onramp.mergeMethod")
-                UserDefaults.standard.set(delete, forKey: "onramp.deleteBranchOnMerge")
+                UserDefaults.standard.set(m.rawValue, forKey: "station.mergeMethod")
+                UserDefaults.standard.set(delete, forKey: "station.deleteBranchOnMerge")
                 self.mergeButton.isEnabled = false
                 self.mergeButton.title = "Merging…"
                 self.onMerge?(m, delete) { [weak self] error in

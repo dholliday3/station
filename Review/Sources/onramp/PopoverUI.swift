@@ -1,6 +1,6 @@
 import AppKit
 
-/// Shared layout for onramp's popovers, so they all get the same width,
+/// Shared layout for station's popovers, so they all get the same width,
 /// padding and type scale, and size themselves after Auto Layout has run
 /// (sizing a stack before layout clipped the right edge).
 @MainActor

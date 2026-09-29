@@ -4,7 +4,7 @@ import OSLog
 import Observation
 import StoplightCore
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "Model")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "Model")
 
 @MainActor
 @Observable
@@ -332,7 +332,6 @@ final class AppModel {
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.fullRefreshDue { await self.refresh() } else { await self.refreshPending() }
-                await self.updater.checkIfDue()
                 try? await Task.sleep(for: .seconds(self.nextInterval))
             }
         }

@@ -1,17 +1,17 @@
 import AppKit
 
-/// ONRAMP_SELFTEST=1: types into the biggest file and scrolls the whole review.
-/// ONRAMP_SELFTEST=jump: simulates dragging the scroll thumb far down and back.
+/// STATION_SELFTEST=1: types into the biggest file and scrolls the whole review.
+/// STATION_SELFTEST=jump: simulates dragging the scroll thumb far down and back.
 /// Prints timings. Uses the same input path as the keyboard.
 @MainActor
 enum SelfTest {
     private static var started = false
 
     static func run(review: ReviewView) {
-        guard !started, ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] != nil else { return }
+        guard !started, ProcessInfo.processInfo.environment["STATION_SELFTEST"] != nil else { return }
         started = true // reloads (mode switches, ⌘R) call this again; tests run once
         let scrollView = review.scrollView
-        let mode = ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"]
+        let mode = ProcessInfo.processInfo.environment["STATION_SELFTEST"]
         if mode == "jump" { return runJump(scrollView: scrollView) }
         if mode == "expand" || mode == "expand-edit" {
             // Click the first two fold rows of STTextView.swift, as a user would.
@@ -67,7 +67,7 @@ enum SelfTest {
                         log("\(title) menu, pass \(pass): \(String(format: "%.1f", (CACurrentMediaTime() - t0) * 1000)) ms")
                     }
                 }
-                log("app icon: \(Extensions.resource("AppIcon.icns")?.lastPathComponent ?? "MISSING"), \(Int(NSApp.applicationIconImage.size.width))pt, \(NSApp.applicationIconImage.representations.count) sizes")
+                log("app icon: \(Int(NSApp.applicationIconImage.size.width))pt, \(NSApp.applicationIconImage.representations.count) sizes")
                 let t0 = CACurrentMediaTime()
                 _ = Style.shared.monospaceFamilies
                 log("font list (cached now): \(String(format: "%.1f", (CACurrentMediaTime() - t0) * 1000)) ms")
@@ -91,11 +91,11 @@ enum SelfTest {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 log("git button: '\(review.gitButtonTitleForTests)'")
-                let stage = ProcessInfo.processInfo.environment["ONRAMP_STAGE"] ?? ""
+                let stage = ProcessInfo.processInfo.environment["STATION_STAGE"] ?? ""
                 if stage == "commit" { review.showCommitForTests() }
                 if stage == "merge" { review.showMergeForTests() }
                 if stage == "ship" { // commit + push through the button: a picture at each step of the ring
-                    let out = ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"] ?? "/tmp/ship"
+                    let out = ProcessInfo.processInfo.environment["STATION_SNAP_OUT"] ?? "/tmp/ship"
                     review.shipForTests(message: "Ship it from the self-test")
                     for (k, t) in [0.25, 1.0, 2.0, 2.9, 3.3].enumerated() {
                         try? await Task.sleep(nanoseconds: UInt64((k == 0 ? t : t - [0.25, 1.0, 2.0, 2.9, 3.3][k - 1]) * 1e9))
@@ -124,7 +124,7 @@ enum SelfTest {
         if mode == "ci" {
             Task { @MainActor in
                 let doc = review.document, repo = doc.repoRootForTests
-                if let slug = ProcessInfo.processInfo.environment["ONRAMP_CI_SHA"] {
+                if let slug = ProcessInfo.processInfo.environment["STATION_CI_SHA"] {
                     do {
                         let r = try GitHub.ciFindings(repo: repo, sha: slug)
                         log("real CI: \(r.findings.count) findings (complete \(r.complete))")
@@ -153,11 +153,11 @@ enum SelfTest {
                 guard let app = AppDelegate.current else { return log("setup") }
                 let repo = review.document.repoRootForTests
                 log("clone match: sharkdp/hexyl → \(Clones.matches(repo, "sharkdp/hexyl")), other/repo → \(Clones.matches(repo, "other/repo"))")
-                UserDefaults.standard.set(repo, forKey: "onramp.clone.sharkdp/hexyl") // as if found before
-                DeepLinks.handle(URL(string: "onramp://pr?repo=sharkdp/hexyl&number=286")!, app: app)
+                UserDefaults.standard.set(repo, forKey: "station.clone.sharkdp/hexyl") // as if found before
+                DeepLinks.handle(URL(string: "station://pr?repo=sharkdp/hexyl&number=286")!, app: app)
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 log("after link: \(app.tabCount) tabs · front '\(app.front?.window?.title ?? "")' · \(app.front?.review.document.files.count ?? 0) files")
-                UserDefaults.standard.removeObject(forKey: "onramp.clone.sharkdp/hexyl")
+                UserDefaults.standard.removeObject(forKey: "station.clone.sharkdp/hexyl")
                 log("ready")
             }
             return
@@ -182,7 +182,7 @@ enum SelfTest {
             guard let i = doc.files.firstIndex(where: { $0.path.hasSuffix("backfill_balances.py") }) else { return log("no file") }
             let f = doc.files[i], text = f.newText as String
             let line = text.components(separatedBy: "\n").firstIndex { $0.contains("balance = invoice.total") } ?? 10
-            let body = ProcessInfo.processInfo.environment["ONRAMP_SEND_BODY"] ?? "Rename `balance` to `amount_due` in this loop."
+            let body = ProcessInfo.processInfo.environment["STATION_SEND_BODY"] ?? "Rename `balance` to `amount_due` in this loop."
             let t = try! addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: false, author: doc.reviewAuthor, body: body, pending: false)
             let t0 = CACurrentMediaTime()
             QuickSend.send(thread: t, path: f.path, line: line, text: text, repo: repo) { error in
@@ -202,7 +202,7 @@ enum SelfTest {
                 guard let target = doc.files.first(where: { $0.path.hasSuffix(".ts") && $0.syntax != nil }) else { return log("nothing coloured on screen") }
                 doc.scrollToFile(doc.files.firstIndex { $0 === target }!)
                 try? await Task.sleep(nanoseconds: 600_000_000)
-                doc.following = ProcessInfo.processInfo.environment["ONRAMP_FOLLOW"] != nil
+                doc.following = ProcessInfo.processInfo.environment["STATION_FOLLOW"] != nil
                 doc.scrollToFile(doc.files.count - 1) // start far away: following should bring us to the change
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 let url = URL(fileURLWithPath: repo).appendingPathComponent(target.path)
@@ -273,7 +273,7 @@ enum SelfTest {
                 guard let i = doc.files.firstIndex(where: { $0.path.hasSuffix("money.ts") }) else { return log("no file") }
                 let f = doc.files[i], text = f.newText as String
                 let line = text.components(separatedBy: "\n").firstIndex { $0.contains("export function sum") } ?? 7
-                let body = ProcessInfo.processInfo.environment["ONRAMP_SEND_BODY"] ?? "Rename `amounts` to `values` in sum()."
+                let body = ProcessInfo.processInfo.environment["STATION_SEND_BODY"] ?? "Rename `amounts` to `values` in sum()."
                 let t = try! addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: false, author: doc.reviewAuthor, body: body, pending: false)
                 let t1 = CACurrentMediaTime()
                 doc.following = true
@@ -364,7 +364,7 @@ enum SelfTest {
         }
         if mode == "tabs" {
             Task { @MainActor in
-                guard let app = AppDelegate.current, let other = ProcessInfo.processInfo.environment["ONRAMP_OTHER"] else { return log("setup") }
+                guard let app = AppDelegate.current, let other = ProcessInfo.processInfo.environment["STATION_OTHER"] else { return log("setup") }
                 let first = app.front!
                 let second = app.openTab(repo: other)
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -385,7 +385,7 @@ enum SelfTest {
                 let repo = review.document.repoRootForTests
                 let open = (try? GitHub.list(repo: repo, filter: .open)) ?? []
                 log("picker: \(open.count) open PRs, first: #\(open.first?.number ?? 0) \(open.first?.title ?? "")")
-                let n = Int(ProcessInfo.processInfo.environment["ONRAMP_PR"] ?? "149")!
+                let n = Int(ProcessInfo.processInfo.environment["STATION_PR"] ?? "149")!
                 review.openPullRequest(n) { error in
                     MainActor.assumeIsolated {
                         if let error { log("error: \(error)"); log("ready"); return }
@@ -404,9 +404,9 @@ enum SelfTest {
             }
             return
         }
-        if mode == "ghcomments" { // a PR's comments on GitHub, both ways, for real (ONRAMP_PR): posts test comments
+        if mode == "ghcomments" { // a PR's comments on GitHub, both ways, for real (STATION_PR): posts test comments
             Task { @MainActor in
-                let n = Int(ProcessInfo.processInfo.environment["ONRAMP_PR"] ?? "0")!
+                let n = Int(ProcessInfo.processInfo.environment["STATION_PR"] ?? "0")!
                 review.openPullRequest(n) { error in
                     MainActor.assumeIsolated {
                         if let error { log("error: \(error)"); log("ready"); return }
@@ -429,27 +429,27 @@ enum SelfTest {
                                 do { try work(); log("ok: \(name)") } catch { log("FAILED: \(name): \(message(for: error))") }
                             }
                             var single: Thread!
-                            let post = ProcessInfo.processInfo.environment["ONRAMP_GH_VIEWONLY"] == nil
+                            let post = ProcessInfo.processInfo.environment["STATION_GH_VIEWONLY"] == nil
                             if post {
                             step("one-off comment") {
-                                single = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Onramp test] a single comment", pending: false)
+                                single = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Station test] a single comment", pending: false)
                                 try GitHubReviewSync.publish(single, repo: repo, pr: n, base: base)
                             }
                             step("one-off reply") {
-                                let t = try reply(repoRoot: repo, id: single.id, author: me, body: "[Onramp test] a reply", pending: false)
+                                let t = try reply(repoRoot: repo, id: single.id, author: me, body: "[Station test] a reply", pending: false)
                                 guard try GitHubReviewSync.publishReply(t, index: t.entries.count - 1, repo: repo, pr: n) else { throw GitHub.Failure(description: "not linked") }
                             }
                             step("edit") {
-                                let t = try editEntry(repoRoot: repo, id: single.id, index: 0, body: "[Onramp test] a single comment (edited)")
+                                let t = try editEntry(repoRoot: repo, id: single.id, index: 0, body: "[Station test] a single comment (edited)")
                                 try GitHub.editComment(repo: repo, id: t.entries[0].githubId!, body: t.entries[0].body)
                             }
                             step("agent reply stays local") { _ = try reply(repoRoot: repo, id: single.id, author: "Claude", body: "agent note", pending: false) }
                             step("review: 2 pending comments + a pending reply, Approve") {
-                                _ = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Onramp test] review comment 1", pending: true)
-                                _ = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Onramp test] review comment 2", pending: true)
-                                _ = try reply(repoRoot: repo, id: single.id, author: me, body: "[Onramp test] pending reply in the review", pending: true)
-                                let notes = try GitHubReviewSync.submit(repo: repo, pr: n, me: me, base: base, body: "[Onramp test] review summary", verdict: .approve)
-                                _ = try submitReview(repoRoot: repo, author: me, body: "[Onramp test] review summary", verdict: .approve)
+                                _ = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Station test] review comment 1", pending: true)
+                                _ = try addThread(repoRoot: repo, path: f.path, text: text, line: UInt32(line), oldSide: oldSide, author: me, body: "[Station test] review comment 2", pending: true)
+                                _ = try reply(repoRoot: repo, id: single.id, author: me, body: "[Station test] pending reply in the review", pending: true)
+                                let notes = try GitHubReviewSync.submit(repo: repo, pr: n, me: me, base: base, body: "[Station test] review summary", verdict: .approve)
+                                _ = try submitReview(repoRoot: repo, author: me, body: "[Station test] review summary", verdict: .approve)
                                 log("notes: \(notes)")
                             }
                             step("resolve") {
@@ -469,12 +469,12 @@ enum SelfTest {
                                 log("in view: \(doc.files.flatMap(\.threads).count) threads, panel \(doc.panelItems.count), pr \(doc.prNumber ?? -1), paths \(Set(mine.map(\.path))) vs \(doc.files.map(\.path).prefix(2))")
                                 log("ready")
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { // whose PR it is arrives from GitHub
-                                    if ProcessInfo.processInfo.environment["ONRAMP_GH_COMPOSE"] != nil, let i = doc.files.firstIndex(where: { $0.path == f.path }) {
+                                    if ProcessInfo.processInfo.environment["STATION_GH_COMPOSE"] != nil, let i = doc.files.firstIndex(where: { $0.path == f.path }) {
                                         doc.startComment(i, CommentTarget(line: 3, old: true))
                                         _ = frame(review.scrollView, to: max(0, doc.frame(ofFile: i).maxY - 700)) // deleted-line comments sit under the deleted block
                                         log("composer open; posts to GitHub: \(doc.postToGitHub) (mine: \(doc.prIsMine))")
                                     }
-                                    if ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"] != nil { snap(window: review.window) }
+                                    if ProcessInfo.processInfo.environment["STATION_SNAP_OUT"] != nil { snap(window: review.window) }
                                 }
                             }
                         }
@@ -483,17 +483,17 @@ enum SelfTest {
             }
             return
         }
-        if mode == "palette" { // ⌘P: what each kind of query finds (ONRAMP_PALETTE: queries, "|"-separated)
+        if mode == "palette" { // ⌘P: what each kind of query finds (STATION_PALETTE: queries, "|"-separated)
             Task { @MainActor in
                 AppDelegate.current?.front?.showPalette(nil)
                 try? await Task.sleep(nanoseconds: 4_000_000_000) // open PRs arrive from GitHub
-                let queries = (ProcessInfo.processInfo.environment["ONRAMP_PALETTE"] ?? "").split(separator: "|").map(String.init)
+                let queries = (ProcessInfo.processInfo.environment["STATION_PALETTE"] ?? "").split(separator: "|").map(String.init)
                 for q in [""] + queries {
                     let titles = CommandPalette.shared.typeForTests(q)
                     log("\u{201C}\(q)\u{201D} → \(titles.count): " + titles.prefix(4).joined(separator: " | "))
                 }
                 if let last = queries.last { _ = CommandPalette.shared.typeForTests(last) }
-                if ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"] != nil { snap(window: review.window) } else { log("ready") }
+                if ProcessInfo.processInfo.environment["STATION_SNAP_OUT"] != nil { snap(window: review.window) } else { log("ready") }
             }
             return
         }
@@ -542,7 +542,7 @@ enum SelfTest {
                 log("claimed: button '\(review.agentLabelForTests)'")
                 _ = frame(review.scrollView, to: max(0, doc.frame(ofFile: fi).minY + 200))
                 try? await Task.sleep(nanoseconds: 300_000_000)
-                if ProcessInfo.processInfo.environment["ONRAMP_STAGE"] == "claimed" { log("window id \(review.window!.windowNumber)"); log("ready"); return }
+                if ProcessInfo.processInfo.environment["STATION_STAGE"] == "claimed" { log("window id \(review.window!.windowNumber)"); log("ready"); return }
                 _ = try! releaseThread(repoRoot: repo, id: t.id, agent: "codex")
                 _ = try! reply(repoRoot: repo, id: t.id, author: "codex", body: """
                 Intent: store a precomputed `balance` for every open invoice, so readers don't need to recompute it. Looking at it again, I don't think it holds up:
@@ -563,7 +563,7 @@ enum SelfTest {
                 _ = frame(review.scrollView, to: max(0, doc.frame(ofFile: fi).minY + 200))
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 log("replied: button '\(review.agentLabelForTests)'")
-                if ProcessInfo.processInfo.environment["ONRAMP_CLICK"] != nil {
+                if ProcessInfo.processInfo.environment["STATION_CLICK"] != nil {
                     doc.setAllCollapsed(true)
                     _ = frame(review.scrollView, to: 0)
                     review.clickAgentForTests()
@@ -661,8 +661,8 @@ enum SelfTest {
             // Screenshot setup: file 0 viewed, scrolled into file 1 (sticky header), then a popover.
             Task { @MainActor in
                 let doc = review.document
-                if doc.files.count > 1, !doc.files[0].viewed, ProcessInfo.processInfo.environment["ONRAMP_NO_VIEW"] == nil { doc.toggleViewed(0) }
-                if let target = ProcessInfo.processInfo.environment["ONRAMP_SCROLL_TO"], let i = doc.files.firstIndex(where: { $0.path == target }) {
+                if doc.files.count > 1, !doc.files[0].viewed, ProcessInfo.processInfo.environment["STATION_NO_VIEW"] == nil { doc.toggleViewed(0) }
+                if let target = ProcessInfo.processInfo.environment["STATION_SCROLL_TO"], let i = doc.files.firstIndex(where: { $0.path == target }) {
                     _ = frame(review.scrollView, to: max(0, doc.frame(ofFile: i).minY - 60))
                 } else if doc.files.count > 1 { _ = frame(review.scrollView, to: doc.frame(ofFile: 1).minY + 140) }
                 try? await Task.sleep(nanoseconds: 300_000_000)
@@ -670,7 +670,7 @@ enum SelfTest {
                     let f = w.frame
                     log("window \(Int(f.minX)),\(Int(screen.frame.height - f.maxY)),\(Int(f.width)),\(Int(f.height)) id \(w.windowNumber)")
                 }
-                if ProcessInfo.processInfo.environment["ONRAMP_TYPE"] != nil, let e = doc.activateEditor(1, offset: doc.files[1].lineStarts[min(17, doc.files[1].lineCount - 1)]) {
+                if ProcessInfo.processInfo.environment["STATION_TYPE"] != nil, let e = doc.activateEditor(1, offset: doc.files[1].lineStarts[min(17, doc.files[1].lineCount - 1)]) {
                     e.textView.insertText("const greeting = \"typed in the editor\"; // re-highlighted\n", replacementRange: e.textView.selectedRange())
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     var info = ""
@@ -683,7 +683,7 @@ enum SelfTest {
                 if let t = AppDelegate.current?.sourceToolbar { log("toolbar: \(t.debugFrames)") }
                 log("ready")
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                let popover = ProcessInfo.processInfo.environment["ONRAMP_POPOVER"]
+                let popover = ProcessInfo.processInfo.environment["STATION_POPOVER"]
                 if popover == "review" { review.showReview() }
                 if popover == "connect" { review.showConnect() }
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -725,35 +725,35 @@ enum SelfTest {
             log("problems: \(Extensions.problems.map(\.message))")
             return
         }
-        if mode == "snap" { // a picture of the window (ONRAMP_SNAP_OUT), for checking looks
+        if mode == "snap" { // a picture of the window (STATION_SNAP_OUT), for checking looks
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 let env = ProcessInfo.processInfo.environment, files = review.document.files
-                let target = env["ONRAMP_SNAP_FILE"].flatMap { f in files.firstIndex { $0.path.hasSuffix(f) } } ?? min(2, max(0, files.count - 1))
+                let target = env["STATION_SNAP_FILE"].flatMap { f in files.firstIndex { $0.path.hasSuffix(f) } } ?? min(2, max(0, files.count - 1))
                 review.document.scrollToFile(target)
-                if let suffix = env["ONRAMP_SNAP_COMPOSE"], let i = review.document.files.firstIndex(where: { $0.path.hasSuffix(suffix) }) {
+                if let suffix = env["STATION_SNAP_COMPOSE"], let i = review.document.files.firstIndex(where: { $0.path.hasSuffix(suffix) }) {
                     review.document.startComment(i, CommentTarget(line: 12, old: false)) // like clicking + on a line
                     review.document.composerView(i)?.input.textView.string = "Guard against a negative balance here."
                 }
-                if let id = env["ONRAMP_SNAP_THREAD"], let t = try? loadThreads(repoRoot: review.document.repoRootForTests).first(where: { $0.id == id }) {
+                if let id = env["STATION_SNAP_THREAD"], let t = try? loadThreads(repoRoot: review.document.repoRootForTests).first(where: { $0.id == id }) {
                     review.document.scrollToThread(t) // like clicking it in the side panel
                 }
-                if env["ONRAMP_SNAP_FOLLOW"] != nil { review.document.following = true }
-                if env["ONRAMP_SNAP_UNCOMMITTED"] != nil { review.setMode(.uncommitted) }
-                if let text = env["ONRAMP_SNAP_NOTICE"] { review.document.onNotice?(text); review.document.onNotice?(text) } // twice: one note, not a stack
-                if let c = env["ONRAMP_SNAP_CURSOR"], let i = review.document.files.firstIndex(where: { $0.path.hasSuffix(c) }) { // the agent's cursor, as while it edits
+                if env["STATION_SNAP_FOLLOW"] != nil { review.document.following = true }
+                if env["STATION_SNAP_UNCOMMITTED"] != nil { review.setMode(.uncommitted) }
+                if let text = env["STATION_SNAP_NOTICE"] { review.document.onNotice?(text); review.document.onNotice?(text) } // twice: one note, not a stack
+                if let c = env["STATION_SNAP_CURSOR"], let i = review.document.files.firstIndex(where: { $0.path.hasSuffix(c) }) { // the agent's cursor, as while it edits
                     review.document.scrollToFile(i)
                     review.document.agentCursor = (review.document.files[i].path, 12)
                 }
-                if env["ONRAMP_SNAP_PANEL"] == "prs" { (NSApp.delegate as? AppDelegate)?.showPullRequests(nil) }
-                if let n = env["ONRAMP_SNAP_OPEN_PR"].flatMap(Int.init) { // catch the loading states mid-flight
+                if env["STATION_SNAP_PANEL"] == "prs" { (NSApp.delegate as? AppDelegate)?.showPullRequests(nil) }
+                if let n = env["STATION_SNAP_OPEN_PR"].flatMap(Int.init) { // catch the loading states mid-flight
                     (NSApp.delegate as? AppDelegate)?.showPullRequests(nil)
                     review.openPullRequest(n)
                     try? await Task.sleep(nanoseconds: 700_000_000)
                 } else {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)
                 }
-                guard let out = ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"], let window = review.window else { return log("no window") }
+                guard let out = ProcessInfo.processInfo.environment["STATION_SNAP_OUT"], let window = review.window else { return log("no window") }
                 // screencapture draws it exactly as on screen (vibrancy included), even behind other windows.
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -786,7 +786,7 @@ enum SelfTest {
                 let doc = review.document
                 guard let i = doc.files.firstIndex(where: { $0.path == "STTextView.swift" }) else { return log("no file") }
                 doc.scrollToFile(i)
-                doc.startComment(i, CommentTarget(line: 40, old: ProcessInfo.processInfo.environment["ONRAMP_OLD"] == "1"))
+                doc.startComment(i, CommentTarget(line: 40, old: ProcessInfo.processInfo.environment["STATION_OLD"] == "1"))
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 guard let composer = doc.composerView(i) else { return log("no composer") }
                 let focused = composer.window?.firstResponder === composer.input.textView
@@ -795,7 +795,7 @@ enum SelfTest {
                 composer.input.textView.onSubmit?() // ⌘↩
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 log("composer focused=\(focused); threads on file: \(doc.files[i].threads.map { "\($0.thread.id)@\($0.line.map { String($0 + 1) } ?? "?")" })")
-                if ProcessInfo.processInfo.environment["ONRAMP_OPEN_EDITOR"] == "1" {
+                if ProcessInfo.processInfo.environment["STATION_OPEN_EDITOR"] == "1" {
                     if let e = doc.activateEditor(i, offset: doc.files[i].lineStarts[42]) {
                         let st = e.textView.folding.textStorage!
                         let at = e.lineStarts[45]
@@ -806,7 +806,7 @@ enum SelfTest {
                         log("after 300ms: indent=\(ps2?.headIndent ?? -1)")
                     }
                 }
-                guard ProcessInfo.processInfo.environment["ONRAMP_EDIT"] == "1", let t = doc.files[i].threads.first else { return }
+                guard ProcessInfo.processInfo.environment["STATION_EDIT"] == "1", let t = doc.files[i].threads.first else { return }
                 // Hover a line (pointer over the code), then edit the comment in place.
                 let layout = doc.files[i].layout
                 if let row = layout.rows.first(where: { if case .line(44, _) = $0.kind { return true } else { return false } }) {
@@ -817,7 +817,7 @@ enum SelfTest {
                 doc.threadView(t.thread.id)?.onStartEdit?(0)
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 log("editing: \(doc.threadView(t.thread.id)?.editInput?.textView.string ?? "nil")")
-                if ProcessInfo.processInfo.environment["ONRAMP_EDIT_SAVE"] == "1" {
+                if ProcessInfo.processInfo.environment["STATION_EDIT_SAVE"] == "1" {
                     doc.threadView(t.thread.id)?.onSaveEdit?(0, "Edited: say what the plugins list is for.")
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     log("after save: \(doc.files[i].threads.first?.thread.entries.first?.body ?? "nil")")
@@ -827,7 +827,7 @@ enum SelfTest {
         }
         if mode == "connect" {
             review.showConnect()
-            if ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"] != nil { // picture of the popover once its checks finish
+            if ProcessInfo.processInfo.environment["STATION_SNAP_OUT"] != nil { // picture of the popover once its checks finish
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     snap(window: NSApp.windows.first { String(describing: type(of: $0)).contains("Popover") })
@@ -901,7 +901,7 @@ enum SelfTest {
                 if let i = doc.files.firstIndex(where: { $0.path == "tests/todos.test.ts" }) { doc.scrollToFile(i) }
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 log("ready for screenshot")
-                guard let target = ProcessInfo.processInfo.environment["ONRAMP_SEND"].flatMap(AgentRunner.Target.init(rawValue:)) else { return }
+                guard let target = ProcessInfo.processInfo.environment["STATION_SEND"].flatMap(AgentRunner.Target.init(rawValue:)) else { return }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 review.submit(body: "Two issues before this can merge.", verdict: .requestChanges, targets: [target])
                 log("submitted; pending now \(doc.pendingCount); agent \(review.agentState)")
@@ -980,7 +980,7 @@ enum SelfTest {
                 // Frames are paced at 120 Hz like real scrolling; back-to-back frames
                 // otherwise measure waiting for the window server, not our work.
                 var targets: [CGFloat] = []
-                if ProcessInfo.processInfo.environment["ONRAMP_WHEEL"] == "1" {
+                if ProcessInfo.processInfo.environment["STATION_WHEEL"] == "1" {
                     // Fast trackpad flick: 40pt per frame for 240 frames (~2 s at 120 Hz).
                     targets = (0..<240).map { height * 0.4 + CGFloat($0) * 40 }
                 } else {
@@ -999,13 +999,13 @@ enum SelfTest {
                 phases = [0, 0, 0, 0]
                 log(String(format: "%@ drag: avg %.1fms  p50 %.1fms  p95 %.1fms  worst %.1fms  frames>8.3ms: %d/%d",
                            pass, ms.reduce(0, +) / Double(ms.count), sorted[ms.count / 2], sorted[ms.count * 95 / 100], sorted.last!, slow, ms.count))
-                if ProcessInfo.processInfo.environment["ONRAMP_STAY"] == nil { _ = frame(scrollView, to: 0) }
+                if ProcessInfo.processInfo.environment["STATION_STAY"] == nil { _ = frame(scrollView, to: 0) }
             }
             log("done")
         }
     }
 
-    /// Picture of `window` to ONRAMP_SNAP_OUT (as on screen), then quit.
+    /// Picture of `window` to STATION_SNAP_OUT (as on screen), then quit.
     /// A picture of `window` now (the app keeps running).
     static func capture(_ window: NSWindow?, to out: String) {
         guard let window else { return }
@@ -1019,7 +1019,7 @@ enum SelfTest {
     static func snap(window: NSWindow?) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard let out = ProcessInfo.processInfo.environment["ONRAMP_SNAP_OUT"], let window else { return log("no window") }
+            guard let out = ProcessInfo.processInfo.environment["STATION_SNAP_OUT"], let window else { return log("no window") }
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
             p.arguments = ["-x", "-o", "-l", String(window.windowNumber), out]

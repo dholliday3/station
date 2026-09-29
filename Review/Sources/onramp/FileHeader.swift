@@ -133,7 +133,7 @@ final class StickyHeaderView: NSView {
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
-    /// Folding or checking "Viewed" works even while onramp isn't the active app.
+    /// Folding or checking "Viewed" works even while station isn't the active app.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {

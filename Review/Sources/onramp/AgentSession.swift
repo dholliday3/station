@@ -70,7 +70,7 @@ final class AgentSession {
 
     // MARK: Resuming
 
-    private static func savedKey(_ key: String) -> String { "onramp.agentSession." + key }
+    private static func savedKey(_ key: String) -> String { "station.agentSession." + key }
     static func savedSession(_ key: String) -> String? { UserDefaults.standard.string(forKey: savedKey(key)) }
     static func forget(_ key: String) { UserDefaults.standard.removeObject(forKey: savedKey(key)) }
 
@@ -359,7 +359,7 @@ final class AgentSession {
     /// The first message: what we're reviewing, your standards, and "read it now".
     static func primePrompt(files: [String], title: String?, description: String?, context: String, readOnly: Bool) -> String {
         """
-        You're my code review partner in Onramp\(title.map { " for \($0)" } ?? ""). \
+        You're my code review partner in Station\(title.map { " for \($0)" } ?? ""). \
         \(readOnly ? "This is someone else's pull request, checked out here read-only: investigate and answer, don't edit files." : "The changes are in this working tree; you may edit them when I ask.")
         \(description.map { $0.isEmpty ? "" : "\nThe description:\n\($0.prefix(6000))\n" } ?? "")
         The changed files:

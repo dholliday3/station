@@ -3,5 +3,5 @@ name = "GitHub"
 version = "1.0.0"
 api_version = 1
 description = "GitHub Dark and GitHub Light."
-authors = ["onramp"]
+authors = ["station"]
 themes = ["themes/github-dark.json", "themes/github-light.json"]

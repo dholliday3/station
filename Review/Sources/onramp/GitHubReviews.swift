@@ -20,7 +20,7 @@ extension GitHub {
         var args = ["api", "--method", method, path]
         var file: URL?
         if let json {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("onramp-gh-\(UUID().uuidString).json")
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("station-gh-\(UUID().uuidString).json")
             try JSONSerialization.data(withJSONObject: json).write(to: url)
             args += ["--input", url.path]
             file = url
@@ -176,7 +176,7 @@ extension GitHubReviewSync {
         let text = fileAt(repoRoot: repo, rev: rev, path: thread.path) ?? ""
         let located = locateThreads(threads: [thread], path: thread.path, text: thread.anchor.oldSide ? "" : text, oldText: thread.anchor.oldSide ? text : "")
         guard let line = located.first?.line else {
-            throw GitHub.Failure(description: "That line isn't in the PR on GitHub (push your changes first), so the comment stays in Onramp.")
+            throw GitHub.Failure(description: "That line isn't in the PR on GitHub (push your changes first), so the comment stays in Station.")
         }
         return GitHub.Place(path: thread.path, line: Int(line) + 1, oldSide: thread.anchor.oldSide)
     }

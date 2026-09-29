@@ -5,11 +5,11 @@ import AppKit
 /// Xcode's scheme picker. Menus are built when opened, so they're current.
 @MainActor
 final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
-    private static let projectID = NSToolbarItem.Identifier("onramp.project")
-    private static let changesID = NSToolbarItem.Identifier("onramp.changes")
-    private static let commentsID = NSToolbarItem.Identifier("onramp.comments")
-    private static let contextID = NSToolbarItem.Identifier("onramp.context")
-    private static let leftToggleID = NSToolbarItem.Identifier("onramp.toggleFiles")
+    private static let projectID = NSToolbarItem.Identifier("station.project")
+    private static let changesID = NSToolbarItem.Identifier("station.changes")
+    private static let commentsID = NSToolbarItem.Identifier("station.comments")
+    private static let contextID = NSToolbarItem.Identifier("station.context")
+    private static let leftToggleID = NSToolbarItem.Identifier("station.toggleFiles")
     private let leftToggle = CapsuleButton()
     var onToggleFiles: (() -> Void)?
     private let contextButton = CapsuleButton()
@@ -61,7 +61,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
     }
 
     func install(in window: NSWindow) {
-        let toolbar = NSToolbar(identifier: "onramp.toolbar")
+        let toolbar = NSToolbar(identifier: "station.toolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
@@ -354,14 +354,14 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
 /// Projects opened recently, most recent first.
 enum RecentProjects {
-    private static let key = "onramp.recentProjects"
+    private static let key = "station.recentProjects"
 
     static var list: [String] {
         (UserDefaults.standard.stringArray(forKey: key) ?? []).filter { FileManager.default.fileExists(atPath: $0) }
     }
 
     static func add(_ path: String) {
-        guard ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] == nil, !Demo.isOn else { return } // tests and demos use scratch repos
+        guard ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil, !Demo.isOn else { return } // tests and demos use scratch repos
         UserDefaults.standard.set(([path] + list.filter { $0 != path }).prefix(12).map { $0 }, forKey: key)
     }
 

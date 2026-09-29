@@ -39,12 +39,12 @@ final class AgentRunner {
     /// code and answer comments. (Both plugin and plain MCP registrations.)
     private static let claudeTools = [
         "Read", "Edit", "Write", "Glob", "Grep",
-        "mcp__plugin_onramp_onramp__list_comments", "mcp__plugin_onramp_onramp__reply_to_comment",
-        "mcp__plugin_onramp_onramp__resolve_comment", "mcp__plugin_onramp_onramp__claim_comment",
-        "mcp__plugin_onramp_onramp__release_comment",
-        "mcp__onramp__list_comments", "mcp__onramp__reply_to_comment", "mcp__onramp__resolve_comment",
-        "mcp__onramp__claim_comment", "mcp__onramp__release_comment", "mcp__onramp__get_review_context",
-        "mcp__plugin_onramp_onramp__get_review_context",
+        "mcp__plugin_station_station__list_comments", "mcp__plugin_station_station__reply_to_comment",
+        "mcp__plugin_station_station__resolve_comment", "mcp__plugin_station_station__claim_comment",
+        "mcp__plugin_station_station__release_comment",
+        "mcp__station__list_comments", "mcp__station__reply_to_comment", "mcp__station__resolve_comment",
+        "mcp__station__claim_comment", "mcp__station__release_comment", "mcp__station__get_review_context",
+        "mcp__plugin_station_station__get_review_context",
     ].joined(separator: ",")
 
     /// The shell command for a run. `resume`: the session to continue (the
@@ -75,10 +75,10 @@ final class AgentRunner {
     // MARK: Sessions
 
     /// "Continue each agent's last session" (per repo).
-    static func continuesSession(repo: String) -> Bool { UserDefaults.standard.bool(forKey: "onramp.continueSession." + repo) }
-    static func setContinuesSession(_ on: Bool, repo: String) { UserDefaults.standard.set(on, forKey: "onramp.continueSession." + repo) }
+    static func continuesSession(repo: String) -> Bool { UserDefaults.standard.bool(forKey: "station.continueSession." + repo) }
+    static func setContinuesSession(_ on: Bool, repo: String) { UserDefaults.standard.set(on, forKey: "station.continueSession." + repo) }
 
-    private static func sessionKey(_ target: Target, _ repo: String) -> String { "onramp.session.\(target.rawValue)." + repo }
+    private static func sessionKey(_ target: Target, _ repo: String) -> String { "station.session.\(target.rawValue)." + repo }
     static func lastSession(_ target: Target, repo: String) -> String? { UserDefaults.standard.string(forKey: sessionKey(target, repo)) }
     private static func remember(_ id: String, _ target: Target, repo: String) { UserDefaults.standard.set(id, forKey: sessionKey(target, repo)) }
 
@@ -92,7 +92,7 @@ final class AgentRunner {
         guard let command = Self.command(target, prompt: prompt, resume: wanted, newSession: fresh, readOnly: checkout != nil) else { return }
         if target == .claude { Self.remember(wanted ?? fresh, target, repo: repo) } // we chose the id up front
         let log = (try? commentsPath(repoRoot: repo)).map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("agent-run-\(target.rawValue).log") }
-            ?? FileManager.default.temporaryDirectory.appendingPathComponent("onramp-agent-run-\(target.rawValue).log")
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent("station-agent-run-\(target.rawValue).log")
         logURL = log
         // Not found: say so and how to fix it, instead of a shell's "command not found".
         let tool = target == .claude ? "claude" : "codex"
@@ -118,7 +118,7 @@ final class AgentRunner {
         p.currentDirectoryURL = URL(fileURLWithPath: checkout ?? repo)
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = AgentIntegration.userPath // your terminal's PATH: agents need node, git, … too
-        if checkout != nil { env["ONRAMP_REPO"] = repo } // their onramp MCP server / CLI must use this review, not the checkout
+        if checkout != nil { env["STATION_REPO"] = repo } // their station MCP server / CLI must use this review, not the checkout
         p.environment = env
         p.standardInput = FileHandle.nullDevice
         p.standardOutput = handle
@@ -147,12 +147,12 @@ final class AgentRunner {
 
     /// Agents to request a review from, remembered per repo (Claude Code the first time).
     static func savedTargets(repo: String) -> [Target] {
-        guard let saved = UserDefaults.standard.string(forKey: "onramp.sendTo." + repo) else { return [.claude] }
+        guard let saved = UserDefaults.standard.string(forKey: "station.sendTo." + repo) else { return [.claude] }
         return saved.split(separator: ",").compactMap { Target(rawValue: String($0)) }.filter { $0 != .none }
     }
 
     static func save(_ targets: [Target], repo: String) {
-        UserDefaults.standard.set(targets.map(\.rawValue).joined(separator: ","), forKey: "onramp.sendTo." + repo)
+        UserDefaults.standard.set(targets.map(\.rawValue).joined(separator: ","), forKey: "station.sendTo." + repo)
     }
 }
 
@@ -178,7 +178,7 @@ final class ReviewSubmitViewController: NSViewController {
 
     /// Reviewing a PR or a commit: nothing is checked out, so agents can't fix anything here.
     private let readOnly: Bool
-    /// The PR whose GitHub review this becomes (nil: it stays in Onramp).
+    /// The PR whose GitHub review this becomes (nil: it stays in Station).
     private let githubPR: Int?
     private let submitButton = NSButton(title: "Submit review", target: nil, action: nil)
 

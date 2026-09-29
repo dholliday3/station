@@ -34,7 +34,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     func start() {
         let env = ProcessInfo.processInfo.environment
         if Demo.isOn { return } // the installed app may already have one
-        if let mode = env["ONRAMP_SELFTEST"] { if mode == "menubar" { runSelfTest() }; return } // tests don't touch your menu bar
+        if let mode = env["STATION_SELFTEST"] { if mode == "menubar" { runSelfTest() }; return } // tests don't touch your menu bar
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged), name: .styleChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(readMarksChanged), name: ReadMarks.changed, object: nil)
         settingsChanged()
@@ -67,7 +67,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = Self.icon(working: false, dot: false)
-        item.button?.toolTip = "Onramp"
+        item.button?.toolTip = "Station"
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
@@ -93,7 +93,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         guard !scanning else { return }
         scanning = true
         // Self-tests scan only the scratch repos they're given, never your real ones.
-        let roots = ProcessInfo.processInfo.environment["ONRAMP_MENUBAR_REPOS"].map { $0.split(separator: ":").map(String.init) } ?? RecentProjects.list
+        let roots = ProcessInfo.processInfo.environment["STATION_MENUBAR_REPOS"].map { $0.split(separator: ":").map(String.init) } ?? RecentProjects.list
         // Review runs started from open tabs (only the app knows about those).
         var finished: [String: [(String, Bool)]] = [:]
         for review in (NSApp.delegate as? AppDelegate)?.openReviews ?? [] {
@@ -138,7 +138,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         guard let button = item?.button else { return }
         button.image = Self.icon(working: working, dot: dot)
         let waiting = projects.reduce(0) { $0 + $1.waiting }
-        button.toolTip = working ? "Onramp: an agent is working" : waiting > 0 ? "Onramp: \(waiting) waiting on you" : "Onramp"
+        button.toolTip = working ? "Station: an agent is working" : waiting > 0 ? "Station: \(waiting) waiting on you" : "Station"
     }
 
     // MARK: Menu
@@ -153,7 +153,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         hide.target = self
         hide.toolTip = "Show it again from View → Show Agents in Menu Bar (the Dock icon comes back if it was hidden)"
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit Onramp", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: "Quit Station", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
     }
 
@@ -284,7 +284,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = working ? "Onramp: an agent is working" : dot ? "Onramp: waiting on you" : "Onramp"
+        image.accessibilityDescription = working ? "Station: an agent is working" : dot ? "Station: waiting on you" : "Station"
         return image
     }
 
@@ -300,10 +300,10 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     // MARK: Self-test
 
-    /// ONRAMP_SELFTEST=menubar: scan the recent projects (scratch config), log them, and render the icons.
+    /// STATION_SELFTEST=menubar: scan the recent projects (scratch config), log them, and render the icons.
     private func runSelfTest() {
         func log(_ s: String) { FileHandle.standardError.write("[selftest] \(s)\n".data(using: .utf8)!) }
-        if let dir = ProcessInfo.processInfo.environment["ONRAMP_ICON_OUT"] {
+        if let dir = ProcessInfo.processInfo.environment["STATION_ICON_OUT"] {
             for (name, w, d) in [("idle", false, false), ("working", true, false), ("waiting", false, true), ("both", true, true)] {
                 let img = Self.icon(working: w, dot: d)
                 let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 72, pixelsHigh: 72, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
@@ -325,7 +325,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             let menu = NSMenu()
             self.menuNeedsUpdate(menu)
             log("menu: " + menu.items.map { $0.isSeparatorItem ? "—" : ($0.indentationLevel > 0 ? "  " : "") + $0.title }.joined(separator: " | "))
-            guard ProcessInfo.processInfo.environment["ONRAMP_SELFTEST_READ"] != nil else { log("done"); return NSApp.terminate(nil) }
+            guard ProcessInfo.processInfo.environment["STATION_SELFTEST_READ"] != nil else { log("done"); return NSApp.terminate(nil) }
             self.markAllRead() // as from the menu; the rescan should find nothing waiting
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 log("after Mark All as Read: waiting \(self.projects.map(\.waiting).reduce(0, +)), dot \(self.projects.contains(where: \.needsYou))")

@@ -212,7 +212,7 @@ final class UserPrefs {
     enum ActivityScope: String, CaseIterable, Identifiable {
         case mine, everything
         var id: String { rawValue }
-        var title: String { self == .mine ? "My pull requests" : "Every pull request in Stoplight" }
+        var title: String { self == .mine ? "My pull requests" : "Every pull request in Station" }
     }
     /// Whose PRs: only yours, or everything you follow and watch.
     var notifyActivityOn: ActivityScope { didSet { defaults.set(notifyActivityOn.rawValue, forKey: Key.notifyActivityOn) } }

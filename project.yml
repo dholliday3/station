@@ -42,7 +42,7 @@ targets:
         NSHighResolutionCapable: true
         CFBundleURLTypes:
           - CFBundleURLName: com.timwheeler.station
-            CFBundleURLSchemes: [onramp, stoplight]
+            CFBundleURLSchemes: [station]
         CFBundleDocumentTypes:
           - CFBundleTypeName: Folder
             CFBundleTypeRole: Viewer
@@ -54,7 +54,7 @@ targets:
       path: Station/Station.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.timwheeler.stoplight
+          - group.com.timwheeler.station
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timwheeler.station
@@ -76,12 +76,12 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
-      path: StationWidget/StoplightWidget.entitlements
+      path: StationWidget/StationWidget.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.application-groups:
-          - group.com.timwheeler.stoplight
+          - group.com.timwheeler.station
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timwheeler.station.widget

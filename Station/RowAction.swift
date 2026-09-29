@@ -22,7 +22,7 @@ enum RowAction: String, CaseIterable, Identifiable, Codable {
         case .pin: "Pin"
         case .fix: "Fix with your agent"
         case .review: "Adversarial review with your agent"
-        case .onramp: "Review in Onramp"
+        case .onramp: "Review in Station"
         }
     }
 
@@ -61,28 +61,29 @@ enum RowAction: String, CaseIterable, Identifiable, Codable {
 }
 
 extension RowAction {
-    /// Not an SF Symbol: Onramp's app icon in outline (see `symbolImage`).
+    /// Not an SF Symbol: Station's icon in outline (see `symbolImage`).
     static let onrampSymbol = "onramp"
 
-    /// The image for a row button's symbol: an SF Symbol, or the Onramp glyph.
+    /// The image for a row button's symbol: an SF Symbol, or the Station glyph.
     static func symbolImage(_ symbol: String) -> Image {
         symbol == onrampSymbol ? Image(nsImage: onrampGlyph).renderingMode(.template) : Image(systemName: symbol)
     }
 
-    /// Onramp's icon, a rounded square with a road curving through it, drawn
-    /// as an outline to sit with the SF Symbols (the same road as Onramp's menu bar icon).
+    /// Station's icon in outline: three lines at 45° in a rounded square, to sit with the SF Symbols.
     private static let onrampGlyph: NSImage = {
         let image = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { _ in
             let box = NSRect(x: 0.5, y: 0.5, width: 13, height: 13)
-            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: box.minX + x * box.width, y: box.maxY - y * box.height) }
-            let road = NSBezierPath()
-            road.move(to: p(0.32, -0.05))
-            road.curve(to: p(0.84, 1.05), controlPoint1: p(0.32, 0.45), controlPoint2: p(0.84, 0.55))
-            road.lineWidth = 2.1
             let square = NSBezierPath(roundedRect: box, xRadius: 3.4, yRadius: 3.4)
             NSColor.black.set()
             NSGraphicsContext.saveGraphicsState()
-            square.addClip(); road.stroke()
+            square.addClip()
+            let q = CGFloat(0.5).squareRoot(), c = NSPoint(x: box.midX, y: box.midY)
+            for k in [-1.0, 0, 1] {
+                let o = NSPoint(x: c.x + k * 3.6 * q, y: c.y - k * 3.6 * q)
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: o.x - 12, y: o.y - 12)); line.line(to: NSPoint(x: o.x + 12, y: o.y + 12))
+                line.lineWidth = 1.3; line.stroke()
+            }
             NSGraphicsContext.restoreGraphicsState()
             let outline = NSBezierPath(roundedRect: box.insetBy(dx: 0.65, dy: 0.65), xRadius: 2.8, yRadius: 2.8)
             outline.lineWidth = 1.3; outline.stroke()

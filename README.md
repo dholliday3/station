@@ -1,29 +1,37 @@
 # Station
 
-The ADE (agentic development environment) for your Mac: Stoplight's menu bar (your PRs' checks as three dots, notifications, a widget) and Onramp's review windows (the diff, comments synced with GitHub, your agents) in one app.
+The ADE (agentic development environment) for your Mac. The menu bar shows your pull requests' checks as three dots, with notifications and a widget. The windows are where you review: the diff, comments synced with GitHub, and your agents answering them.
 
-Work in progress: stage 1 of the merge. Both apps' code builds and runs as one app, unchanged; the `station` names, the Transfer icon and one Settings window come next.
+## Use it
+
+- **Menu bar:** red, yellow, green dots, lit when any PR is failing, running or passing. Click for the panel; right-click for your agents, recent projects and settings.
+- **Review:** `station` in any git repo (Station → Install Command Line Tool… puts it in `~/.local/bin`), a PR's Review button in the panel, or ⌘P in a window.
+- **Agents:** `station mcp` is an MCP server. In Claude Code: `claude mcp add station -- station mcp`, or Agent → Connect in a review window. `station --help` lists the plain CLI.
+- **Settings:** the Settings window, or `~/.config/station/settings.json` (edits apply as you save).
+
+Diagnostics while it runs: `curl -s http://127.0.0.1:47400/status.json`.
 
 ## Build
 
 ```bash
 brew install xcodegen
-scripts/build-core.sh          # Onramp's Rust core → Review/Frameworks (needs rustup + the two Apple targets)
+scripts/build-core.sh          # the Rust core → Review/Frameworks (needs rustup + aarch64/x86_64-apple-darwin)
 xcodegen generate
-open Station.xcodeproj         # or build from the command line:
 xcodebuild -scheme Station -configuration Release -derivedDataPath build/rel build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
 scripts/sign-adhoc.sh build/rel/Build/Products/Release/Station.app
 ```
 
-Tests: `cd StoplightCore && swift test` (menu bar logic), `cd core && cargo test` (review core).
+Tests: `cd StoplightCore && swift test`, `cd core && cargo test`.
+
+Release: `scripts/release.sh` (Developer ID, notarized with the `station` notarytool profile) → `dist/Station.zip` for the updater and a DMG.
 
 ## Layout
 
-- `Station/`: the app. Stoplight's menu bar, panel and Settings; `main.swift` hands the launch to Onramp.
+- `Station/`: the app target: menu bar, panel, Settings; `main.swift` hands the launch to the review module.
 - `StationWidget/`: the widget.
-- `StoplightCore/`: menu bar models, GitHub provider, rules (Swift package).
-- `Review/`: Onramp's review windows, CLI and MCP server (Swift package, module `onramp`).
-- `core/`: Onramp's Rust core (diff, comments, git), bridged with UniFFI.
+- `StoplightCore/`: menu bar models, the GitHub provider, notification rules (Swift package).
+- `Review/`: review windows, CLI and MCP server (Swift package, module `onramp`).
+- `core/`: the review core in Rust (diff, comments, git), bridged with UniFFI.
 - `integrations/`: the Claude Code plugin.
-- `design/station/`: the app icon (dark and light) and the script that draws it.
+- `design/station/`: the app icon (dark and light) and the script that draws it; `scripts/make-app-icon.swift` turns it into the app's icons.

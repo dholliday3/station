@@ -1,17 +1,17 @@
 import AppKit
 
-/// How Station hosts Onramp: Onramp runs the launch (CLI, menus, review windows),
+/// How Station hosts Station: Station runs the launch (CLI, menus, review windows),
 /// and Station adds its menu bar through these hooks.
 public enum OnrampHost {
-    /// After Onramp's menus and windows are up.
+    /// After Station's menus and windows are up.
     @MainActor public static var didLaunch: (() -> Void)?
-    /// Links Onramp doesn't handle itself (not onramp://, not a folder).
+    /// Links Station doesn't handle itself (not station://, not a folder).
     @MainActor public static var openURL: ((URL) -> Void)?
     /// Your agents across recent projects: one is working, something waits on you. Set by the host,
-    /// which then shows them (Station's menu bar dots) instead of Onramp's own menu bar icon.
+    /// which then shows them (Station's menu bar dots) instead of Station's own menu bar icon.
     @MainActor public static var agentsChanged: ((_ working: Bool, _ needsYou: Bool) -> Void)?
 
-    /// Onramp's Settings… menu opens the host's Settings window instead of settings.json.
+    /// Station's Settings… menu opens the host's Settings window instead of settings.json.
     @MainActor public static var showSettings: (() -> Void)?
 
     /// The settings file the review windows read (and watch: hand edits apply live).
@@ -25,17 +25,17 @@ public enum OnrampHost {
     @MainActor public static func openPullRequest(repo: String, number: Int) {
         guard let app = NSApp.delegate as? AppDelegate else { return }
         var c = URLComponents()
-        c.scheme = "onramp"
+        c.scheme = "station"
         c.host = "pr"
         c.queryItems = [URLQueryItem(name: "repo", value: repo), URLQueryItem(name: "number", value: String(number))]
         if let url = c.url { DeepLinks.handle(url, app: app) }
     }
 
     /// Your agents per project, replies waiting on you, Open Recent and Hide Dock Icon: the menu
-    /// Onramp's own menu bar icon had, for the host's menu.
+    /// Station's own menu bar icon had, for the host's menu.
     @MainActor public static func addAgentItems(to menu: NSMenu) { MenuBarItem.shared.addAgentItems(to: menu) }
 
-    /// `onramp comments|reply|resolve|…` runs the agent CLI and exits; `onramp [repo]` (or a
+    /// `station comments|reply|resolve|…` runs the agent CLI and exits; `station [repo]` (or a
     /// plain launch) starts the app. Never returns.
     public static func main() -> Never {
         if let status = CLI.run(Array(CommandLine.arguments.dropFirst())) { exit(status) }

@@ -17,8 +17,8 @@
 //! ```
 //!
 //! Loaded from, in order (a later file with the same id replaces an earlier one):
-//! the reviewers that ship with Onramp, yours (`<config>/reviewers/*.toml`), then
-//! the repo's (`.onramp/reviewers/*.toml`, shared with your team).
+//! the reviewers that ship with Station, yours (`<config>/reviewers/*.toml`), then
+//! the repo's (`.station/reviewers/*.toml`, shared with your team).
 use std::fs;
 use std::path::Path;
 
@@ -71,7 +71,7 @@ pub fn severity_rank(severity: String) -> u32 {
     SEVERITIES.iter().position(|s| *s == severity.to_lowercase()).unwrap_or(1) as u32
 }
 
-/// Every reviewer, from `builtin_dir`, `<config_dir>/reviewers` and `<repo>/.onramp/reviewers`.
+/// Every reviewer, from `builtin_dir`, `<config_dir>/reviewers` and `<repo>/.station/reviewers`.
 #[uniffi::export]
 pub fn list_reviewers(repo_root: String, config_dir: String, builtin_dir: String) -> ReviewerScan {
     let mut reviewers: Vec<Reviewer> = Vec::new();
@@ -79,7 +79,7 @@ pub fn list_reviewers(repo_root: String, config_dir: String, builtin_dir: String
     let dirs = [
         Path::new(&builtin_dir).to_path_buf(),
         Path::new(&config_dir).join("reviewers"),
-        Path::new(&repo_root).join(".onramp").join("reviewers"),
+        Path::new(&repo_root).join(".station").join("reviewers"),
     ];
     for dir in dirs {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
@@ -117,15 +117,15 @@ mod tests {
 
     #[test]
     fn later_files_override_and_defaults_fill_in() {
-        let dir = std::env::temp_dir().join(format!("onramp-reviewers-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("station-reviewers-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let (builtin, config, repo) = (dir.join("builtin"), dir.join("config"), dir.join("repo"));
         fs::create_dir_all(&builtin).unwrap();
         fs::create_dir_all(config.join("reviewers")).unwrap();
-        fs::create_dir_all(repo.join(".onramp/reviewers")).unwrap();
+        fs::create_dir_all(repo.join(".station/reviewers")).unwrap();
         fs::write(builtin.join("red-team.toml"), "id = \"red-team\"\nname = \"Red team\"\nprompt = \"break it\"\n").unwrap();
         fs::write(builtin.join("security.toml"), "id = \"security\"\nmin_severity = \"HIGH\"\n").unwrap();
-        fs::write(repo.join(".onramp/reviewers/red-team.toml"), "id = \"red-team\"\nname = \"Our red team\"\nmax_findings = 5\n").unwrap();
+        fs::write(repo.join(".station/reviewers/red-team.toml"), "id = \"red-team\"\nname = \"Our red team\"\nmax_findings = 5\n").unwrap();
         fs::write(config.join("reviewers/broken.toml"), "id = ").unwrap();
 
         let scan = list_reviewers(repo.display().to_string(), config.display().to_string(), builtin.display().to_string());

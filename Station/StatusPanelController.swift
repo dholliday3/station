@@ -5,7 +5,7 @@ import ServiceManagement
 import SwiftUI
 import StoplightCore
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "Panel")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "Panel")
 
 /// Owns the status item and the drop-down panel (US-004/005).
 ///
@@ -127,7 +127,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
             return item
         }
 
-        // Your review agents and projects (what Onramp's own menu bar icon used to show).
+        // Your review agents and projects (what Station's own menu bar icon used to show).
         OnrampHost.addAgentItems(to: menu)
         for item in menu.items where item.image == nil && !item.isSeparatorItem { item.image = NSImage(size: NSSize(width: 16, height: 16)) } // keep the icon column even
         menu.addItem(.separator())
@@ -151,7 +151,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         menu.addItem(.separator())
-        _ = add("Quit Stoplight", "xmark.circle", #selector(quit), key: "q")
+        _ = add("Quit Station", "xmark.circle", #selector(quit), key: "q")
 
         // Attach just long enough to pop it up, so left click keeps toggling the panel.
         statusItem.menu = menu
@@ -251,7 +251,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         pulse.autoreverses = true
         pulse.repeatCount = 2
         pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(pulse, forKey: "stoplight.flash")
+        layer.add(pulse, forKey: "station.flash")
     }
 
     /// Move the panel back under the dots, keeping its size and pinned state.

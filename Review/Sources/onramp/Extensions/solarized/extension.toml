@@ -3,5 +3,5 @@ name = "Solarized"
 version = "1.0.0"
 api_version = 1
 description = "Solarized Light and Solarized Dark."
-authors = ["onramp"]
+authors = ["station"]
 themes = ["themes/solarized-light.json", "themes/solarized-dark.json"]

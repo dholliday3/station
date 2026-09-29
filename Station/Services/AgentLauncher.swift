@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 import StoplightCore
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "Agent")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "Agent")
 
 /// One button: worktree for the PR's branch, terminal in it, your coding agent running with the failure as its prompt (US-025).
 @MainActor
@@ -261,7 +261,7 @@ enum AgentLauncher {
     // MARK: Sessions (US-038)
 
     /// One live agent terminal per PR. The launcher script writes its own PID and removes it when the
-    /// window closes, so "is a session running?" survives Stoplight restarts.
+    /// window closes, so "is a session running?" survives Station restarts.
     struct Session: Codable, Sendable {
         let worktree: String
         let terminal: String
@@ -270,7 +270,7 @@ enum AgentLauncher {
     }
 
     static var sessionDir: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".stoplight/sessions")
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".station/sessions")
     }
     /// PR ids contain "/" and "#" for branch rows, so flatten to a filename-safe key. Fixing and
     /// reviewing are separate jobs in separate windows, so the job is part of the key: otherwise
@@ -279,7 +279,7 @@ enum AgentLauncher {
         String(prID.map { $0.isLetter || $0.isNumber ? $0 : "-" }) + (job == .review ? "-review" : "")
     }
     static func sessionTitle(_ pr: PullRequest, job: Job = .fix) -> String {
-        "Stoplight · \(pr.shortRef)\(job == .review ? " · review" : "")"
+        "Station · \(pr.shortRef)\(job == .review ? " · review" : "")"
     }
 
     /// Liveness is the PID, not the file: a window that dies without running its trap still reads as gone.
@@ -351,17 +351,17 @@ enum AgentLauncher {
 
     /// osascript from a file: no quoting games, and it fails quietly if automation isn't permitted.
     private static func appleScript(_ source: String) async {
-        let f = FileManager.default.temporaryDirectory.appendingPathComponent("stoplight-\(UUID().uuidString).scpt")
+        let f = FileManager.default.temporaryDirectory.appendingPathComponent("station-\(UUID().uuidString).scpt")
         guard (try? source.write(to: f, atomically: true, encoding: .utf8)) != nil else { return }
         _ = try? await shell("osascript \(shq(f.path))")
         try? FileManager.default.removeItem(at: f)
     }
 
-    /// The URL an agent (or a hook) opens to ping Stoplight about this PR (US-034).
-    static func callbackURL(_ state: String, pr: PullRequest) -> String { "stoplight://agent/\(state)/\(pr.id)" }
+    /// The URL an agent (or a hook) opens to ping Station about this PR (US-034).
+    static func callbackURL(_ state: String, pr: PullRequest) -> String { "station://agent/\(state)/\(pr.id)" }
 
     /// Claude Code runs shell hooks on events; wire Stop and Notification (permission prompt / waiting for
-    /// input) to ping Stoplight. Written per worktree so nothing leaks into the user's real config.
+    /// input) to ping Station. Written per worktree so nothing leaks into the user's real config.
     static func installClaudeHooks(in worktree: String, pr: PullRequest) throws {
         let dir = (worktree as NSString).appendingPathComponent(".claude")
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -422,7 +422,7 @@ enum AgentLauncher {
     /// for Terminal/iTerm, the AppleScript automation prompt.
     private static func launcherScript(command: String, directory: String, title: String, key: String) throws -> URL {
         // No spaces anywhere in this path: Ghostty hands --command through `bash -c` unquoted.
-        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".stoplight/launch")
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".station/launch")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // Keep the folder tidy: anything older than a day goes.
         if let old = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey]) {

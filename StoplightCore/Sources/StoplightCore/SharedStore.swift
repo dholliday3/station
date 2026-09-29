@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-private let log = Logger(subsystem: "com.timwheeler.stoplight", category: "SharedStore")
+private let log = Logger(subsystem: "com.timwheeler.station", category: "SharedStore")
 
 /// The only bridge between app and widget: one JSON file (US-007). Never contains the token.
 /// Already filtered for hidden repos.
@@ -61,7 +61,7 @@ public struct Snapshot: Codable, Sendable {
 /// for unsandboxed apps (seen in the wild: the main thread parked inside `Data.write`). The widget's own
 /// container trips the "access data from other apps" prompt. Loopback needs neither.
 public enum SharedStore {
-    public static let loopbackPort: UInt16 = 47391
+    public static let loopbackPort: UInt16 = 47400
     public static var loopbackURL: URL { URL(string: "http://127.0.0.1:\(loopbackPort)/prs.json")! }
 
     private static let encoder: JSONEncoder = { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e }()

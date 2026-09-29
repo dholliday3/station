@@ -1,11 +1,11 @@
 import AppKit
 
-/// ONRAMP_DEMO=1: a hands-off tour for screen recordings (scripts/demo-big.sh).
+/// STATION_DEMO=1: a hands-off tour for screen recordings (scripts/demo-big.sh).
 /// Waits for you to start recording, glides from the first file to the last,
 /// then jumps around through the file tree.
 @MainActor
 enum Demo {
-    nonisolated static var isOn: Bool { ProcessInfo.processInfo.environment["ONRAMP_DEMO"] != nil }
+    nonisolated static var isOn: Bool { ProcessInfo.processInfo.environment["STATION_DEMO"] != nil }
     private static var started = false
 
     static func run(review: ReviewView) {
@@ -33,7 +33,7 @@ enum Demo {
                 try? await Task.sleep(nanoseconds: 1_100_000_000)
             }
             say("done: stop recording")
-            if ProcessInfo.processInfo.environment["ONRAMP_SELFTEST"] != nil { NSApp.terminate(nil) } // dry run
+            if ProcessInfo.processInfo.environment["STATION_SELFTEST"] != nil { NSApp.terminate(nil) } // dry run
         }
     }
 

@@ -1,14 +1,14 @@
 {
-  "name": "onramp",
+  "name": "station",
   "owner": {
-    "name": "onramp"
+    "name": "station"
   },
   "plugins": [
     {
-      "name": "onramp",
+      "name": "station",
       "source": "./plugin",
-      "description": "Review comments from the Onramp app: /onramp:address-comments plus the onramp MCP server."
+      "description": "Review comments from the Station app: /station:address-comments plus the station MCP server."
     }
   ],
-  "description": "Onramp: review your agent's changes in a native Mac app and hand the comments back."
+  "description": "Station: review your agent's changes in a native Mac app and hand the comments back."
 }
