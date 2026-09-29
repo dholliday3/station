@@ -13,6 +13,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     private var contextWindow: ContextWindowController?
     private var sidebarController: SidebarController?
     private var prList: PullRequestList?
+    /// What the window shows; Review is the diff (the split view below).
+    private(set) var mode: StationMode = .review
+    private var reviewSplit: NSSplitViewController?
+    private var modeViews: [StationMode: NSViewController] = [:]
     var onClose: ((ProjectWindowController) -> Void)?
 
     var review: ReviewView { reviewView }
@@ -45,6 +49,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onToggleFiles = { [weak self] in (self?.window?.contentViewController as? NSSplitViewController)?.toggleSidebar(nil) }
         toolbar.onOpenContext = { [weak self] in self?.openContext(nil) }
         toolbar.onOpenPullRequest = { [weak self] in self?.openPullRequest(nil) }
+        toolbar.onMode = { [weak self] m in self?.setMode(m) }
         toolbar.onViewPullRequest = { [weak self] n in
             guard let self else { return }
             (NSApp.delegate as? AppDelegate)?.viewPullRequest(n, repo: self.repoPath) { _ in }
@@ -61,7 +66,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         wireSidebar()
         // A content view controller resizes the window to its fitting size (tiny, since
         // the review has no intrinsic size), so size it after, then restore any saved frame.
-        window.contentViewController = makeSplit()
+        reviewSplit = makeSplit()
+        window.contentViewController = mode == .review ? reviewSplit : modeView(mode)
         window.contentMinSize = NSSize(width: 700, height: 400)
         window.setContentSize(NSSize(width: 1300, height: 850))
         window.center()
@@ -124,7 +130,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         wireSidebar()
         guard let window else { return }
         let frame = window.frame // a new content view controller resizes the window to fit
-        window.contentViewController = makeSplit()
+        reviewSplit = makeSplit()
+        window.contentViewController = mode == .review ? reviewSplit : modeView(mode)
         window.setFrame(frame, display: true)
         toolbar.repoPath = path
         toolbar.review = reviewView
@@ -135,6 +142,29 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func openFolder(_ sender: Any?) { toolbar.openFolder(sender) }
+
+    // MARK: Modes
+
+    /// Agents, Pull Requests or Review (⌘1, ⌘2, ⌘3). The window keeps its size.
+    func setMode(_ new: StationMode) {
+        guard let window, new != mode else { return toolbar.setMode(new) }
+        mode = new
+        let frame = window.frame
+        window.contentViewController = new == .review ? reviewSplit : modeView(new)
+        window.setFrame(frame, display: true)
+        toolbar.setMode(new)
+    }
+
+    private func modeView(_ m: StationMode) -> NSViewController? {
+        if let v = modeViews[m] { return v }
+        let v = OnrampHost.makeModeView?(m)
+        modeViews[m] = v
+        return v
+    }
+
+    @objc func showAgents(_ sender: Any?) { setMode(.agents) }
+    @objc func showPullRequestsMode(_ sender: Any?) { setMode(.pullRequests) }
+    @objc func showReview(_ sender: Any?) { setMode(.review) }
 
     private func makeSplit() -> NSSplitViewController {
         let split = NSSplitViewController()

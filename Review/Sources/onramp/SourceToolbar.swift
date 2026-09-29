@@ -10,6 +10,12 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
     private static let commentsID = NSToolbarItem.Identifier("station.comments")
     private static let contextID = NSToolbarItem.Identifier("station.context")
     private static let leftToggleID = NSToolbarItem.Identifier("station.toggleFiles")
+    private static let modeID = NSToolbarItem.Identifier("station.mode")
+    /// Agents · Pull Requests · Review, centred: which surface the window shows.
+    private let modePicker = NSSegmentedControl(labels: StationMode.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    var onMode: ((StationMode) -> Void)?
+    /// The review-only controls, hidden in the other modes.
+    private var reviewItems: [NSView] { [leftToggle, projectButton, changesButton, commentsButton] }
     private let leftToggle = CapsuleButton()
     var onToggleFiles: (() -> Void)?
     private let contextButton = CapsuleButton()
@@ -40,6 +46,12 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
         contextButton.horizontalPadding = 9
         contextButton.toolTip = "Review context: files agents read before working on your comments (⌘K)"
         setContextCount(0)
+        modePicker.target = self
+        modePicker.action = #selector(modeClicked)
+        modePicker.segmentStyle = .separated
+        modePicker.controlSize = .regular
+        for m in StationMode.allCases { modePicker.setToolTip("\(m.title) (⌘\(m.rawValue + 1))", forSegment: m.rawValue) }
+        modePicker.selectedSegment = StationMode.review.rawValue
         leftToggle.target = self
         leftToggle.action = #selector(leftClicked)
         leftToggle.horizontalPadding = 9
@@ -72,6 +84,14 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
     @objc private func commentsClicked() { onToggleComments?() }
     @objc private func leftClicked() { onToggleFiles?() }
+    @objc private func modeClicked() {
+        if let m = StationMode(rawValue: modePicker.selectedSegment) { onMode?(m) }
+    }
+
+    func setMode(_ m: StationMode) {
+        modePicker.selectedSegment = m.rawValue
+        for v in reviewItems { v.isHidden = m != .review }
+    }
     @objc private func contextClicked() { onOpenContext?() }
 
     /// The context button: a book icon, plus how many sources are on.
@@ -137,7 +157,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
     // MARK: Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.leftToggleID, Self.projectID, .flexibleSpace, Self.changesID, Self.commentsID] // Context lives in Review → Context… (⌘K)
+        [Self.leftToggleID, Self.projectID, .flexibleSpace, Self.modeID, .flexibleSpace, Self.changesID, Self.commentsID] // Context lives in Review → Context… (⌘K)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -146,7 +166,11 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: id)
-        if id == Self.leftToggleID {
+        if id == Self.modeID {
+            item.view = modePicker
+            item.label = "Mode"
+            return item
+        } else if id == Self.leftToggleID {
             leftToggle.heightAnchor.constraint(equalToConstant: CapsuleButton.height).isActive = true
             item.view = leftToggle
         } else if id == Self.projectID {

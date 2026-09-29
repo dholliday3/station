@@ -8,6 +8,11 @@ import onramp
 enum AgentsWindow {
     private static var window: NSWindow?
 
+    /// The main window's Agents tab when a window is open, else this standalone window.
+    static func present() {
+        if !OnrampHost.show(.agents) { show() }
+    }
+
     static func show() {
         SessionCatalog.shared.start()
         if window == nil {

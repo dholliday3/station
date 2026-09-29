@@ -214,7 +214,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func bringOver() { Migration.offer() }
-    @objc private func showAgents() { AgentsWindow.show() }
+    @objc private func showAgents() { AgentsWindow.present() }
 
     // MARK: Glyph
 

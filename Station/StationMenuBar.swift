@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import StoplightCore
+import onramp
 
 /// The menu bar half of Station: the status item, its panel, and the Settings window.
 @MainActor
@@ -14,6 +15,10 @@ enum StationMenuBar {
         AppIcon.start()
         AgentBoard.shared.start()
         SessionCatalog.shared.start()
+        // The main window's Agents and Pull Requests tabs (Review is Onramp's own).
+        OnrampHost.makeModeView = { mode -> NSViewController in
+            mode == .agents ? NSHostingController(rootView: AgentsView()) : NSHostingController(rootView: PullRequestsPane(model: model))
+        }
         // ⌘⇧A: the Agents window, first in the Review menu.
         if let review = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "Review" })?.submenu {
             let item = NSMenuItem(title: "Agents", action: #selector(AgentsWindowOpener.open(_:)), keyEquivalent: "a")
@@ -24,7 +29,7 @@ enum StationMenuBar {
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agents" { AgentsSelfTest.run() }
         Migration.offerIfNeeded()
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agentswindow" {
-            AgentsWindow.show()
+            AgentsWindow.present()
             for delay in [6.0, 60.0] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 let all = AgentSession.all()
                 let counts = AgentSession.Status.allCases.map { s in "\(s.title)=\(all.filter { $0.status == s }.count)" }.joined(separator: " ")
@@ -35,6 +40,24 @@ enum StationMenuBar {
                 }
                 if delay > 10 { FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!) }
             } }
+        }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "modes" { // the main window's tabs, one capture each
+            let env = ProcessInfo.processInfo.environment
+            OnrampHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
+            for (i, mode) in StationMode.allCases.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4 + Double(i) * 5) {
+                    let ok = OnrampHost.show(mode)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        let w = OnrampHost.frontWindow
+                        FileHandle.standardError.write("[selftest] mode \(mode.title): shown=\(ok) content=\(w.map { "\($0.windowNumber) \(type(of: $0.contentViewController!))" } ?? "none") windows=\(NSApp.windows.filter { $0.toolbar != nil }.map(\.windowNumber))\n".data(using: .utf8)!)
+                        if let out = env["STATION_SNAP_OUT"], let w {
+                            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                            p.arguments = ["-x", "-o", "-l", String(w.windowNumber), "\(out)-\(mode.rawValue).png"]; try? p.run(); p.waitUntilExit()
+                        }
+                        if mode == .review { FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!) }
+                    }
+                }
+            }
         }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "migration" { // read-only: what it finds, and the sheet
             let f = Migration.find()
@@ -89,5 +112,5 @@ enum StationSettings {
 @MainActor
 final class AgentsWindowOpener: NSObject {
     static let shared = AgentsWindowOpener()
-    @objc func open(_ sender: Any?) { AgentsWindow.show() }
+    @objc func open(_ sender: Any?) { AgentsWindow.present() }
 }

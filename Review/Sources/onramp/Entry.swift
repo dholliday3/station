@@ -2,6 +2,12 @@ import AppKit
 
 /// How Station hosts Station: Station runs the launch (CLI, menus, review windows),
 /// and Station adds its menu bar through these hooks.
+/// What a Station window shows: your agents, your pull requests, or a review (the diff).
+public enum StationMode: Int, CaseIterable, Sendable {
+    case agents, pullRequests, review
+    public var title: String { switch self { case .agents: "Agents"; case .pullRequests: "Pull Requests"; case .review: "Review" } }
+}
+
 public enum OnrampHost {
     /// After Station's menus and windows are up.
     @MainActor public static var didLaunch: (() -> Void)?
@@ -11,7 +17,22 @@ public enum OnrampHost {
     /// which then shows them (Station's menu bar dots) instead of Station's own menu bar icon.
     @MainActor public static var agentsChanged: ((_ working: Bool, _ needsYou: Bool) -> Void)?
 
-    /// Station's Settings… menu opens the host's Settings window instead of settings.json.
+    /// The host's view for a mode other than Review (Agents, Pull Requests).
+    @MainActor public static var makeModeView: ((StationMode) -> NSViewController)?
+
+    /// The window `show(_:)` switches.
+    @MainActor public static var frontWindow: NSWindow? { (NSApp.delegate as? AppDelegate)?.front?.window }
+
+    /// Switch the front window to `mode`. False if there's no window to switch.
+    @MainActor @discardableResult public static func show(_ mode: StationMode) -> Bool {
+        guard let c = (NSApp.delegate as? AppDelegate)?.front else { return false }
+        c.setMode(mode)
+        c.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+
+    /// The review's Settings… menu opens the host's Settings window instead of settings.json.
     @MainActor public static var showSettings: (() -> Void)?
 
     /// The settings file the review windows read (and watch: hand edits apply live).

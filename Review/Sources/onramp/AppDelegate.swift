@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if let existing = controllers.first(where: { $0.repoPath == repo }) {
             existing.window?.tabGroup?.selectedWindow = existing.window
             existing.window?.makeKeyAndOrderFront(nil)
+            existing.setMode(.review)
         } else {
             openTab(repo: repo)
         }
@@ -167,10 +168,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let tab = controllers.first(where: { $0.repoPath == repo && $0.isShowing(pr: n) }), let w = tab.window {
             w.tabGroup?.selectedWindow = w // bring its tab forward
             w.makeKeyAndOrderFront(nil)
+            tab.setMode(.review)
             tab.review.openPullRequest(n, done: done) // re-fetch: it may have new commits
             return
         }
         let tab = openTab(repo: repo, start: false)
+        tab.setMode(.review)
         tab.review.openPullRequest(n, done: done)
     }
 
@@ -186,6 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func openFolder(_ sender: Any?) { front?.openFolder(sender) }
     @objc func openPullRequest(_ sender: Any?) { front?.openPullRequest(sender) }
     @objc func showComments(_ sender: Any?) { front?.showComments(sender) }
+    @objc func showAgents(_ sender: Any?) { front?.showAgents(sender) }
+    @objc func showPullRequestsMode(_ sender: Any?) { front?.showPullRequestsMode(sender) }
+    @objc func showReview(_ sender: Any?) { front?.showReview(sender) }
     @objc func showPullRequests(_ sender: Any?) { front?.showPullRequests(sender) }
     @objc func openContext(_ sender: Any?) { front?.openContext(sender) }
     @objc func showPalette(_ sender: Any?) { front?.showPalette(sender) }
@@ -394,6 +400,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         viewMenu.addItem(withTitle: "Show Agents in Menu Bar", action: #selector(toggleMenuBar(_:)), keyEquivalent: "")
         let follow = viewMenu.addItem(withTitle: "Follow Agent", action: #selector(toggleFollow(_:)), keyEquivalent: "f")
         follow.keyEquivalentModifierMask = [.option, .command]
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(withTitle: "Agents", action: #selector(showAgents(_:)), keyEquivalent: "1")
+        viewMenu.addItem(withTitle: "Pull Requests", action: #selector(showPullRequestsMode(_:)), keyEquivalent: "2")
+        viewMenu.addItem(withTitle: "Review", action: #selector(showReview(_:)), keyEquivalent: "3")
         viewMenu.addItem(.separator())
         let c1 = viewMenu.addItem(withTitle: "Comments", action: #selector(showComments(_:)), keyEquivalent: "1")
         c1.keyEquivalentModifierMask = [.option, .command]
