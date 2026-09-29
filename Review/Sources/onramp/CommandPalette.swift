@@ -1,6 +1,6 @@
 import AppKit
 
-/// ⌘P: go anywhere by typing. "#123" or "123" opens a pull request, a hash opens a
+/// ⌘K (or ⌘P): go anywhere by typing. "#123" or "123" opens a pull request, a hash opens a
 /// commit, "@name" lists someone's PRs and commits, anything else searches PRs,
 /// commits, branches and commands. ↑↓ to choose, ↩ to go, Esc to close.
 @MainActor

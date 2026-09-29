@@ -57,14 +57,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             links.forEach(handleOpen)
             if !controllers.isEmpty { return } // otherwise (you cancelled) start as usual
         }
+        PerfMark.mark("links")
         let fresh = ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "welcome" // pretend nothing is recent
         guard !fresh, let repo = initialRepo ?? RecentProjects.list.first(where: { RecentProjects.repoRoot(of: $0) != nil }) else {
             return chooseFirstProject()
         }
         initialRepo = repo
+        PerfMark.mark("recent")
         let c = makeController(repoPath: repo, first: true)
+        PerfMark.mark("controller")
         c.window?.makeKeyAndOrderFront(nil)
+        PerfMark.mark("shown")
         c.start()
+        PerfMark.mark("started")
+        DispatchQueue.main.async { PerfMark.mark("first-runloop") }
     }
 
     /// No repo and nothing recent: ask for one.
@@ -366,10 +372,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let reviewItem = NSMenuItem()
         let reviewMenu = NSMenu(title: "Review")
-        reviewMenu.addItem(withTitle: "Go To…", action: #selector(showPalette(_:)), keyEquivalent: "p")
+        reviewMenu.addItem(withTitle: "Go To…", action: #selector(showPalette(_:)), keyEquivalent: "k")
+        // ⌘P too (VS Code muscle memory), without a second menu line.
+        let goToP = reviewMenu.addItem(withTitle: "Go To…", action: #selector(showPalette(_:)), keyEquivalent: "p")
+        goToP.isHidden = true
+        goToP.allowsKeyEquivalentWhenHidden = true
         let pr = reviewMenu.addItem(withTitle: "View Pull Request…", action: #selector(openPullRequest(_:)), keyEquivalent: "p")
         pr.keyEquivalentModifierMask = [.command, .shift]
-        reviewMenu.addItem(withTitle: "Context…", action: #selector(openContext(_:)), keyEquivalent: "k")
+        let context = reviewMenu.addItem(withTitle: "Context…", action: #selector(openContext(_:)), keyEquivalent: "k")
+        context.keyEquivalentModifierMask = [.command, .option]
         reviewMenu.addItem(.separator())
         let reviewers = reviewMenu.addItem(withTitle: "Run Reviewer", action: nil, keyEquivalent: "")
         reviewers.submenu = NSMenu(title: "Run Reviewer")

@@ -47,7 +47,7 @@ enum CLI {
                 print(usage)
             case "context":
                 let b = reviewContext(repoRoot: try repoRoot(dir), configDir: onrampConfigDir.path)
-                if b.files.isEmpty { print("No review context yet. Add files in the app: Review → Context… (⌘K)") } else { print(b.text) }
+                if b.files.isEmpty { print("No review context yet. Add files in the app: Review → Context… (⌥⌘K)") } else { print(b.text) }
                 for s in b.skipped { FileHandle.standardError.write("skipped: \(s)\n".data(using: .utf8)!) }
             case "extensions":
                 let scan = MainActor.assumeIsolated { Extensions.scan() }

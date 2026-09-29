@@ -20,11 +20,16 @@ enum Extensions {
            FileManager.default.fileExists(atPath: url.path) {
             return url
         }
-        guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
-        let bundle = exe.deletingLastPathComponent().appendingPathComponent("onramp_onramp.bundle")
-        let root = Bundle(url: bundle)?.resourceURL ?? bundle
-        let url = root.appendingPathComponent(name)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        // The package's resource bundle: in Contents/Resources inside the app (Xcode puts it there),
+        // next to the executable for `swift build`. Looking only beside the executable is how 1.0–1.2
+        // shipped with no syntax highlighting, fonts, themes or built-in reviewers.
+        let exeDir = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent()
+        for dir in [Bundle.main.resourceURL, exeDir].compactMap({ $0 }) {
+            let bundle = dir.appendingPathComponent("onramp_onramp.bundle")
+            let url = (Bundle(url: bundle)?.resourceURL ?? bundle).appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
     }
 
     private(set) static var loaded: [Extension] = []

@@ -88,7 +88,15 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         updateTitle()
     }
 
-    func start() { reviewView.reload() }
+    /// The window draws first (with the loading shimmer), then the review loads: at launch you see
+    /// Station at once instead of a second later.
+    func start() {
+        reviewView.showLoading("Loading changes…")
+        window?.displayIfNeeded()
+        PerfMark.mark("window-drawn")
+        reviewView.reload()
+        reviewView.hideLoading()
+    }
 
     /// The tab's label: "hexyl · PR #149", "servicepro · feat/x".
     private func updateTitle() {
@@ -226,19 +234,22 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         prList?.focusSearch()
     }
 
-    /// ⌘P: the command palette, over this window.
+    /// ⌘K: the command palette, over this window.
     @objc func showPalette(_ sender: Any?) {
         guard let window else { return }
         let palette = CommandPalette.shared
         if palette.isShown { return palette.close() }
         let review = reviewView!, doc = review.document
         var commands: [(title: String, symbol: String, keys: String, run: () -> Void)] = [
+            ("Go to Agents", "person.2", "⌘1", { [weak self] in self?.setMode(.agents) }),
+            ("Go to Pull Requests", "arrow.triangle.pull", "⌘2", { [weak self] in self?.setMode(.pullRequests) }),
+            ("Go to Review", "doc.text.magnifyingglass", "⌘3", { [weak self] in self?.setMode(.review) }),
             ("Pull Requests", "arrow.triangle.pull", "⇧⌘P", { [weak self] in self?.openPullRequest(nil) }),
             ("Comments", "text.bubble", "", { [weak self] in self?.showComments(nil) }),
             ("Reload", "arrow.clockwise", "⌘R", { [weak self] in self?.reloadReview(nil) }),
             ("All Changes on This Branch", "square.stack", "", { var c = review.choice; c.mode = .branch; review.setChoice(c) }),
             ("Uncommitted Changes", "pencil.and.list.clipboard", "", { var c = review.choice; c.mode = .uncommitted; review.setChoice(c) }),
-            ("Context…", "books.vertical", "⌘K", { [weak self] in self?.openContext(nil) }),
+            ("Context…", "books.vertical", "⌥⌘K", { [weak self] in self?.openContext(nil) }),
             ("Open Folder…", "folder", "⌘O", { [weak self] in self?.toolbar.openFolder(nil) }),
             ("Settings…", "gearshape", "⌘,", { (NSApp.delegate as? AppDelegate)?.openSettings(nil) }),
         ]

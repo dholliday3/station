@@ -25,7 +25,7 @@ func write(_ img: CGImage, size: Int, to url: URL) {
 }
 
 // The app's own icon (Finder, the app switcher before launch): the dark one.
-let dark = load("station-icon-dark-art-1024.png"), light = load("station-icon-light-art-1024.png") // the artwork (Station-Dark/Light.icns)
+let dark = load("station-stripes-dark-art-1024.png"), light = load("station-stripes-light-art-1024.png") // the artwork (Station-Stripes-Dark/Light.icns)
 let set = assets.appendingPathComponent("AppIcon.appiconset")
 for (pt, scales) in [(16, [1, 2]), (32, [1, 2]), (128, [1, 2]), (256, [1, 2]), (512, [1, 2])] {
     for s in scales { write(dark, size: pt * s, to: set.appendingPathComponent(s == 1 ? "icon_\(pt).png" : "icon_\(pt)@2x.png")) }

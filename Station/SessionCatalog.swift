@@ -94,6 +94,7 @@ final class SessionCatalog {
                     out[stale[k]] = info
                 }
             }
+            let scanned = Double(DispatchTime.now().uptimeNanoseconds - began.uptimeNanoseconds) / 1e9
             var infos: [String: Info] = [:], skims: [String: Skim] = [:]
             for (n, (file, modified, size)) in files.enumerated() {
                 guard var info = fresh[n] ?? known[file.path]?.info else { continue }
@@ -110,7 +111,7 @@ final class SessionCatalog {
                     catalog.skims = skims
                     catalog.scanning = false
                     catalog.timings.scans += 1; catalog.timings.files = files.count
-                    catalog.timings.lastScan = Double(DispatchTime.now().uptimeNanoseconds - began.uptimeNanoseconds) / 1e9
+                    catalog.timings.lastScan = scanned // the work, not the wait for the main thread
                     catalog.count(files.map(\.0))
                 }
             }
@@ -181,10 +182,6 @@ final class SessionCatalog {
         return f
     }()
 
-    nonisolated private static func lines(_ data: Data) -> [[String: Any]] {
-        data.split(separator: 0x0A).compactMap { try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any] }
-    }
-
     nonisolated private static func chunk(_ file: URL, from offset: UInt64, length: Int) -> Data {
         guard let h = try? FileHandle(forReadingFrom: file) else { return Data() }
         defer { try? h.close() }
@@ -192,38 +189,69 @@ final class SessionCatalog {
         return (try? h.read(upToCount: length)) ?? Data()
     }
 
-    /// Everything but the token totals, from the file's first 128 KB and last 512 KB.
+    /// Everything but the token totals, from the file's first 128 KB and last 512 KB. Only lines
+    /// that can answer something still unknown are parsed, newest first, stopping once all is known:
+    /// a byte search is ~100x cheaper than parsing JSON, and a cold launch skims ~80 files.
     nonisolated private static func skim(_ file: URL) -> Info {
         var i = Info(id: file.deletingPathExtension().lastPathComponent)
         let size = UInt64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         var head = chunk(file, from: 0, length: 131_072)
         if let end = head.lastIndex(of: 0x0A) { head = head[..<end] }
-        for e in lines(head) {
+        for line in head.split(separator: 0x0A) {
+            if i.started != nil, i.cwd != nil, i.entrypoint != nil, i.firstPrompt != nil { break }
+            // Once the basics are in, only a prompt can still add anything.
+            if i.started != nil, i.cwd != nil, i.entrypoint != nil, !(line.firstRange(of: Tag.user) != nil) { continue }
+            guard let e = parse(line) else { continue }
             if i.started == nil, let t = (e["timestamp"] as? String).flatMap(iso.date(from:)) { i.started = t }
             if i.cwd == nil { i.cwd = e["cwd"] as? String }
             if i.entrypoint == nil { i.entrypoint = e["entrypoint"] as? String }
             if i.firstPrompt == nil, e["type"] as? String == "user", let p = prompt(e) { i.firstPrompt = oneLine(p) }
         }
+        let firstCwd = i.cwd
+        i.cwd = nil
         let tailStart = size > 524_288 ? size - 524_288 : 0
         var tail = chunk(file, from: tailStart, length: 524_288)
         if tailStart > 0, let first = tail.firstIndex(of: 0x0A) { tail = tail[tail.index(after: first)...] } // drop the partial first line
-        for e in lines(tail) {
-            if let t = (e["timestamp"] as? String).flatMap(iso.date(from:)) { i.lastActivity = t }
-            if let cwd = e["cwd"] as? String { i.cwd = cwd }
-            if let b = e["gitBranch"] as? String, !b.isEmpty { i.branch = b }
+        // No title or PR link anywhere in the tail: nothing to look for.
+        var gotTitle = tail.firstRange(of: Tag.title) == nil, gotPR = tail.firstRange(of: Tag.pr) == nil
+        for line in tail.split(separator: 0x0A).reversed() {
+            let basics = i.lastActivity != nil && i.cwd != nil && i.branch != nil
+            if basics, i.model != nil, i.lastReply != nil, gotTitle, gotPR { break }
+            let isTitle = !gotTitle && (line.firstRange(of: Tag.title) != nil)
+            let isPR = !gotPR && (line.firstRange(of: Tag.pr) != nil)
+            let isReply = (i.model == nil || i.lastReply == nil) && (line.firstRange(of: Tag.assistant) != nil)
+            guard !basics || isTitle || isPR || isReply, let e = parse(line) else { continue }
+            if i.lastActivity == nil, let t = (e["timestamp"] as? String).flatMap(iso.date(from:)) { i.lastActivity = t }
+            if i.cwd == nil { i.cwd = e["cwd"] as? String }
+            if i.branch == nil, let b = e["gitBranch"] as? String, !b.isEmpty { i.branch = b }
             switch e["type"] as? String {
-            case "ai-title": i.title = e["aiTitle"] as? String ?? i.title
-            case "pr-link":
-                if let repo = e["prRepository"] as? String, let n = e["prNumber"] as? Int, let u = (e["prUrl"] as? String).flatMap(URL.init(string:)) { i.pr = (repo, n, u) }
+            case "ai-title" where !gotTitle:
+                if let t = e["aiTitle"] as? String { i.title = t; gotTitle = true }
+            case "pr-link" where !gotPR:
+                if let repo = e["prRepository"] as? String, let n = e["prNumber"] as? Int, let u = (e["prUrl"] as? String).flatMap(URL.init(string:)) { i.pr = (repo, n, u); gotPR = true }
             case "assistant":
                 guard e["isSidechain"] as? Bool != true, let m = e["message"] as? [String: Any] else { break }
-                if let model = m["model"] as? String, !model.hasPrefix("<") { i.model = model }
-                let words = ((m["content"] as? [[String: Any]]) ?? []).filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined(separator: " ")
-                if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { i.lastReply = oneLine(words) }
+                if i.model == nil, let model = m["model"] as? String, !model.hasPrefix("<") { i.model = model }
+                if i.lastReply == nil {
+                    let words = ((m["content"] as? [[String: Any]]) ?? []).filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined(separator: " ")
+                    if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { i.lastReply = oneLine(words) }
+                }
             default: break
             }
         }
+        i.cwd = i.cwd ?? firstCwd
         return i
+    }
+
+    private enum Tag {
+        static let user = Data(#""type":"user""#.utf8)
+        static let assistant = Data(#""type":"assistant""#.utf8)
+        static let title = Data(#""type":"ai-title""#.utf8)
+        static let pr = Data(#""type":"pr-link""#.utf8)
+    }
+
+    nonisolated private static func parse(_ line: Data.SubSequence) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any]
     }
 
     /// What you typed, if this entry is a prompt (not a tool result or a system note).

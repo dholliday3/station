@@ -44,13 +44,17 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
         contextButton.target = self
         contextButton.action = #selector(contextClicked)
         contextButton.horizontalPadding = 9
-        contextButton.toolTip = "Review context: files agents read before working on your comments (⌘K)"
+        contextButton.toolTip = "Review context: files agents read before working on your comments (⌥⌘K)"
         setContextCount(0)
         modePicker.target = self
         modePicker.action = #selector(modeClicked)
         modePicker.segmentStyle = .separated
         modePicker.controlSize = .regular
-        for m in StationMode.allCases { modePicker.setToolTip("\(m.title) (⌘\(m.rawValue + 1))", forSegment: m.rawValue) }
+        for m in StationMode.allCases {
+            modePicker.setLabel("", forSegment: m.rawValue)
+            modePicker.setImage(Self.tabLabel(m.title, shortcut: "⌘\(m.rawValue + 1)"), forSegment: m.rawValue)
+            modePicker.setToolTip("\(m.title) (⌘\(m.rawValue + 1))", forSegment: m.rawValue)
+        }
         modePicker.selectedSegment = StationMode.review.rawValue
         leftToggle.target = self
         leftToggle.action = #selector(leftClicked)
@@ -84,6 +88,20 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
     @objc private func commentsClicked() { onToggleComments?() }
     @objc private func leftClicked() { onToggleFiles?() }
+    /// "Agents ⌘1": the name, then its shortcut dimmed, like a menu item. Drawn when displayed,
+    /// so the colours follow light and dark mode.
+    private static func tabLabel(_ title: String, shortcut: String) -> NSImage {
+        let text = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.labelColor])
+        text.append(NSAttributedString(string: "  " + shortcut, attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.tertiaryLabelColor]))
+        let size = text.size()
+        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)), flipped: false) { rect in
+            text.draw(at: NSPoint(x: 0, y: (rect.height - size.height) / 2))
+            return true
+        }
+        image.accessibilityDescription = title
+        return image
+    }
+
     @objc private func modeClicked() {
         if let m = StationMode(rawValue: modePicker.selectedSegment) { onMode?(m) }
     }
@@ -157,7 +175,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
     // MARK: Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.leftToggleID, Self.projectID, .flexibleSpace, Self.modeID, .flexibleSpace, Self.changesID, Self.commentsID] // Context lives in Review → Context… (⌘K)
+        [Self.leftToggleID, Self.projectID, .flexibleSpace, Self.modeID, .flexibleSpace, Self.changesID, Self.commentsID] // Context lives in Review → Context… (⌥⌘K)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

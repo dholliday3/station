@@ -10,7 +10,31 @@ enum PerfTest {
     private static var results: [String: Double] = [:]
     private static func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
 
+    /// The longest the main thread went without answering, from launch to the end: what you feel as a hitch.
+    nonisolated(unsafe) private static var worstStall = 0.0
+    nonisolated(unsafe) private static var watching = true
+    /// Every stall over 50ms: when it began (ms since launch) and how long it lasted.
+    nonisolated(unsafe) private static var stalls: [(at: Double, ms: Double)] = []
+
+    /// Pings the main thread every 5ms from a background thread; a late answer is a stall.
+    private static func watchMainThread() {
+        Thread.detachNewThread {
+            while true {
+                guard watching else { usleep(500_000); continue } // off while idle CPU is measured: it's its own load
+                let sent = DispatchTime.now().uptimeNanoseconds
+                let answered = DispatchSemaphore(value: 0)
+                DispatchQueue.main.async { answered.signal() }
+                answered.wait()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - sent) / 1e6
+                worstStall = max(worstStall, ms)
+                if ms > 50 { stalls.append((Date().timeIntervalSince(PerfMark.processStart) * 1000 - ms, ms)) }
+                usleep(5_000)
+            }
+        }
+    }
+
     static func run() {
+        watchMainThread()
         results["launch_to_start_ms"] = (Date().timeIntervalSince(PerfMark.processStart)) * 1000
         let env = ProcessInfo.processInfo.environment
         Task { @MainActor in
@@ -53,11 +77,17 @@ enum PerfTest {
 
             // Idle: the window open on Review, nobody touching it.
             let idle = Double(env["STATION_PERF_IDLE"] ?? "30") ?? 30
+            watching = false
             let cpu0 = cpuSeconds(); t = now()
             try? await Task.sleep(for: .seconds(idle))
             results["idle_cpu_pct"] = (cpuSeconds() - cpu0) / (now() - t) * 100
             results["memory_mb"] = footprintMB()
+            results["main_stall_max_ms"] = worstStall
+            for (i, st) in stalls.prefix(12).enumerated() { results[String(format: "stall%02d_at_%.0f_ms", i, st.at)] = st.ms }
 
+            // What you feel at launch: the first window on screen, and the review in it.
+            if let drawn = PerfMark.marks.first(where: { $0.0 == "window-drawn" }) { results["launch_to_window_ms"] = drawn.1 }
+            if let loaded = PerfMark.marks.first(where: { $0.0 == "started" }) { results["launch_to_review_ms"] = loaded.1 }
             for (i, (label, ms)) in PerfMark.marks.enumerated() { results[String(format: "mark%02d_%@_ms", i, label)] = ms }
             let json = (try? JSONSerialization.data(withJSONObject: results.mapValues { ($0 * 10).rounded() / 10 }, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
             FileHandle.standardError.write("[perf] \(json)\n".data(using: .utf8)!)

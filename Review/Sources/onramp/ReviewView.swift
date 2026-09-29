@@ -211,7 +211,9 @@ final class ReviewView: NSView, NSPopoverDelegate {
         let start = CACurrentMediaTime()
         do {
             publishChoice() // the core reads the repo's saved choice
+            PerfMark.mark("r.publish")
             let base = try reviewBase(repoRoot: repoPath)
+            PerfMark.mark("r.base")
             self.base = base
             document.baseRev = base.rev
             document.readOnly = base.target != nil // a commit or PR isn't on disk: nothing to edit
@@ -222,18 +224,27 @@ final class ReviewView: NSView, NSPopoverDelegate {
             prBar.isHidden = pr == nil
             prBar.setReadOnly(pr != nil && base.target != nil)
             needsLayout = true
-            document.setFiles(TreeOrder.sorted(try loadReview(repoRoot: repoPath, baseRev: base.rev, target: base.target).map(ReviewFile.init)))
+            PerfMark.mark("r.prbar")
+            let raw = try loadReview(repoRoot: repoPath, baseRev: base.rev, target: base.target)
+            PerfMark.mark("r.loadReview")
+            let files = TreeOrder.sorted(raw.map(ReviewFile.init))
+            PerfMark.mark("r.reviewFiles")
+            document.setFiles(files)
+            PerfMark.mark("r.setFiles")
             onBaseChanged?(base)
+            PerfMark.mark("r.baseChanged")
             refreshGit()
             refreshMerge()
             syncCI()
             syncGitHub()
+            PerfMark.mark("r.syncs")
         } catch {
             statusLabel.stringValue = "Error: \(error)"
             return
         }
         needsLayout = true
         layoutSubtreeIfNeeded()
+        PerfMark.mark("r.layout")
         loadMs = (CACurrentMediaTime() - start) * 1000
         onLoad?(document.files)
         updateAgents()
@@ -244,8 +255,10 @@ final class ReviewView: NSView, NSPopoverDelegate {
             s.send(thread: thread.id, message: AgentSession.commentPrompt(thread: thread, path: f.path, line: line, text: f.newText as String))
             return true
         }
+        PerfMark.mark("r.agents")
         startSession() // primed by the time you have a question
         runAutoReviewers()
+        PerfMark.mark("r.session")
         document.onFilesReplaced = { [weak self] files in self?.onLoad?(files); self?.updateStatus(); self?.updateEmpty() }
         updateEmpty()
         document.watchWorkingTree()
@@ -508,7 +521,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     /// Over the diff while a PR is fetched and loaded: diff-shaped placeholders and what's happening.
     private var loadingView: SkeletonView?
 
-    private func showLoading(_ caption: String) {
+    func showLoading(_ caption: String) {
         if loadingView == nil {
             let v = SkeletonView(.diff)
             v.layer?.backgroundColor = DiffStyle.background.cgColor
@@ -519,7 +532,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
         loadingView?.set(caption: caption)
     }
 
-    private func hideLoading() {
+    func hideLoading() {
         loadingView?.removeFromSuperview()
         loadingView = nil
         updateEmpty()
