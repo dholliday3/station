@@ -6,7 +6,7 @@ import Foundation
 /// output would reach the model), always exits 0 (never blocks the agent), and takes milliseconds.
 public enum AgentHook {
     /// One file per session: `<session id>.json`.
-    public static var dir: URL { onrampConfigDir.appendingPathComponent("agents") }
+    public static var dir: URL { stationConfigDir.appendingPathComponent("agents") }
 
     static func run(_ args: [String]) -> Int32 {
         let input = FileHandle.standardInput.readDataToEndOfFile()

@@ -4,10 +4,10 @@ import StoplightCore
 
 /// The circular buttons in an expanded row (US-031). Users pick which appear and in what order.
 enum RowAction: String, CaseIterable, Identifiable, Codable {
-    case open, run, checks, queue, copyURL, share, copyBranch, copyHash, pin, fix, review, onramp
+    case open, run, checks, queue, copyURL, share, copyBranch, copyHash, pin, fix, review, reviewInStation
     var id: String { rawValue }
 
-    static let defaultOrder: [RowAction] = [.open, .onramp, .run, .queue, .copyURL, .share, .copyHash, .pin, .fix, .review]
+    static let defaultOrder: [RowAction] = [.open, .reviewInStation, .run, .queue, .copyURL, .share, .copyHash, .pin, .fix, .review]
 
     var title: String {
         switch self {
@@ -22,7 +22,7 @@ enum RowAction: String, CaseIterable, Identifiable, Codable {
         case .pin: "Pin"
         case .fix: "Fix with your agent"
         case .review: "Adversarial review with your agent"
-        case .onramp: "Review in Station"
+        case .reviewInStation: "Review in Station"
         }
     }
 
@@ -39,7 +39,7 @@ enum RowAction: String, CaseIterable, Identifiable, Codable {
         case .pin: "pin"
         case .fix: "wrench.and.screwdriver"
         case .review: "eye.trianglebadge.exclamationmark"
-        case .onramp: Self.onrampSymbol
+        case .reviewInStation: Self.stationSymbol
         }
     }
 
@@ -55,22 +55,22 @@ enum RowAction: String, CaseIterable, Identifiable, Codable {
         case .copyHash: !pr.headSha.isEmpty
         case .fix: pr.state == .failure && model.canRunAgent(pr)
         case .review: model.canRunAgent(pr) && !pr.isBranch && pr.status == .open
-        case .onramp: !pr.isBranch && PRActions.onrampInstalled
+        case .reviewInStation: !pr.isBranch && PRActions.stationInstalled
         }
     }
 }
 
 extension RowAction {
     /// Not an SF Symbol: Station's icon in outline (see `symbolImage`).
-    static let onrampSymbol = "onramp"
+    static let stationSymbol = "station.review"
 
     /// The image for a row button's symbol: an SF Symbol, or the Station glyph.
     static func symbolImage(_ symbol: String) -> Image {
-        symbol == onrampSymbol ? Image(nsImage: onrampGlyph).renderingMode(.template) : Image(systemName: symbol)
+        symbol == stationSymbol ? Image(nsImage: stationGlyph).renderingMode(.template) : Image(systemName: symbol)
     }
 
     /// Station's icon in outline: three lines at 45° in a rounded square, to sit with the SF Symbols.
-    private static let onrampGlyph: NSImage = {
+    private static let stationGlyph: NSImage = {
         let image = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { _ in
             let box = NSRect(x: 0.5, y: 0.5, width: 13, height: 13)
             let square = NSBezierPath(roundedRect: box, xRadius: 3.4, yRadius: 3.4)

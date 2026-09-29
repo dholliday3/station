@@ -1,7 +1,7 @@
 import AppKit
 import Observation
 import UserNotifications
-import onramp
+import StationKit
 
 /// Every Claude Code session on this Mac, from the files `station hook` keeps in
 /// ~/.config/station/agents/: which need you, which are working, which are done.
@@ -186,7 +186,7 @@ final class AgentBoard {
     }
 
     /// Open the agent's folder as a review: what it changed, ready for comments.
-    func review(_ a: Agent) { OnrampHost.openProject(a.cwd) }
+    func review(_ a: Agent) { StationHost.openProject(a.cwd) }
 
     nonisolated private static func selectTab(app: String, tty: String) -> String? {
         switch app {

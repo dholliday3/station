@@ -1,6 +1,6 @@
 import AppKit
 import Darwin
-import onramp
+import StationKit
 
 /// `STATION_SELFTEST=perf`: times what you feel (launch, the first window, switching tabs) and
 /// what you don't (the session scan, token counting, CPU and memory while idle), prints one
@@ -40,9 +40,9 @@ enum PerfTest {
         Task { @MainActor in
             // The first window: open, laid out and drawn.
             var t = now()
-            OnrampHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
-            while OnrampHost.frontWindow?.isVisible != true { try? await Task.sleep(for: .milliseconds(5)) }
-            OnrampHost.frontWindow?.displayIfNeeded()
+            StationHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
+            while StationHost.frontWindow?.isVisible != true { try? await Task.sleep(for: .milliseconds(5)) }
+            StationHost.frontWindow?.displayIfNeeded()
             results["first_window_ms"] = (now() - t) * 1000
 
             // Sessions: the first scan, then token counting (cold: STATION_CONFIG_DIR starts empty).
@@ -57,9 +57,9 @@ enum PerfTest {
             // Tabs: the first switch builds the view, later ones reuse it. Measured to drawn.
             for mode in [StationMode.agents, .pullRequests, .review] + Array(repeating: [.agents, .pullRequests, .review], count: 5).flatMap({ $0 }) {
                 t = now()
-                OnrampHost.show(mode)
-                OnrampHost.frontWindow?.layoutIfNeeded()
-                OnrampHost.frontWindow?.displayIfNeeded()
+                StationHost.show(mode)
+                StationHost.frontWindow?.layoutIfNeeded()
+                StationHost.frontWindow?.displayIfNeeded()
                 let ms = (now() - t) * 1000
                 let key = "tab_\(mode == .agents ? "agents" : mode == .pullRequests ? "prs" : "review")"
                 if results[key + "_first_ms"] == nil { results[key + "_first_ms"] = ms } else { warm[key, default: []].append(ms) }

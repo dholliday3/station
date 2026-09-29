@@ -1,5 +1,5 @@
 import Foundation
-import onramp
+import StationKit
 import Security
 
 /// US-001. Order: `gh auth token` (memory only) → Keychain (pasted PAT). Never writes the gh token anywhere.
@@ -13,7 +13,7 @@ enum TokenSource {
     /// Set in Settings when `gh` lives somewhere unusual (a custom Homebrew prefix, for example).
     /// gh_path in settings.json, shared with the review windows. Read straight from the file: this runs off the main thread.
     static var customGHPath: String {
-        (try? Data(contentsOf: OnrampHost.settingsURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["gh_path"] as? String ?? ""
+        (try? Data(contentsOf: StationHost.settingsURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["gh_path"] as? String ?? ""
     }
     /// Whatever a login shell resolves `gh` to. Filled once at launch, since the app's own PATH is minimal.
     private(set) nonisolated(unsafe) static var discoveredGHPath: String?

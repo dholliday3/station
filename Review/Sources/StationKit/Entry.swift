@@ -8,7 +8,7 @@ public enum StationMode: Int, CaseIterable, Sendable {
     public var title: String { switch self { case .agents: "Agents"; case .pullRequests: "Pull Requests"; case .review: "Review" } }
 }
 
-public enum OnrampHost {
+public enum StationHost {
     /// After Station's menus and windows are up.
     @MainActor public static var didLaunch: (() -> Void)?
     /// Links Station doesn't handle itself (not station://, not a folder).
@@ -36,7 +36,7 @@ public enum OnrampHost {
     @MainActor public static var showSettings: (() -> Void)?
 
     /// The settings file the review windows read (and watch: hand edits apply live).
-    public static var settingsURL: URL { onrampConfigDir.appendingPathComponent("settings.json") }
+    public static var settingsURL: URL { stationConfigDir.appendingPathComponent("settings.json") }
     /// Theme names for the light or dark appearance, built-in first.
     @MainActor public static func themeNames(dark: Bool) -> [String] { Style.shared.themes.filter { $0.isDark == dark }.map(\.name) }
     /// Monospace font families for the review text, the default first.

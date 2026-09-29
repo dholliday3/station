@@ -7,8 +7,8 @@ enum Installation {
     static func syncIntegrations() {
         guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("integrations"),
               FileManager.default.fileExists(atPath: bundled.path) else { return } // a development build: install.sh does this
-        let dest = onrampConfigDir.appendingPathComponent("integrations")
-        try? FileManager.default.createDirectory(at: onrampConfigDir, withIntermediateDirectories: true)
+        let dest = stationConfigDir.appendingPathComponent("integrations")
+        try? FileManager.default.createDirectory(at: stationConfigDir, withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: dest)
         try? FileManager.default.copyItem(at: bundled, to: dest)
     }

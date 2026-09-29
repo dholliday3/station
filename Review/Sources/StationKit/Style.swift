@@ -47,7 +47,7 @@ struct Settings: Codable, Equatable {
 
 /// ~/.config/station, or $STATION_CONFIG_DIR (tests use a scratch folder).
 /// Outside `Style` so the CLI and MCP server (no main actor) can use it too.
-let onrampConfigDir = ProcessInfo.processInfo.environment["STATION_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
+let stationConfigDir = ProcessInfo.processInfo.environment["STATION_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
     ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/station")
 
 extension Notification.Name {
@@ -61,7 +61,7 @@ final class Style {
     static let shared = Style()
 
     /// ~/.config/station, or $STATION_CONFIG_DIR (tests use a scratch folder).
-    static let configDir = onrampConfigDir
+    static let configDir = stationConfigDir
     static let settingsURL = configDir.appendingPathComponent("settings.json")
     static let themesDir = configDir.appendingPathComponent("themes")
     static let defaultFontFamily = "Lilex" // from the built-in lilex extension

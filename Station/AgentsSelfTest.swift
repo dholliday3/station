@@ -1,5 +1,5 @@
 import AppKit
-import onramp
+import StationKit
 
 /// STATION_SELFTEST=agents (with STATION_CONFIG_DIR and STATION_CLAUDE_SETTINGS on scratch copies):
 /// hooks in and out of Claude Code's settings, fake sessions on the board, a picture of the panel.
@@ -27,7 +27,7 @@ enum AgentsSelfTest {
             let fake: [[String: Any]] = [
                 ["session": "a1", "cwd": FileManager.default.currentDirectoryPath, "pid": me, "state": "needs_you", "detail": "Claude needs your permission to use Bash", "task": "Fix the flaky booking test", "since": now - 240],
                 ["session": "a2", "cwd": "/tmp/station-demo", "pid": me, "state": "working", "detail": "Edit SharedStore.swift", "task": "Move the widget to its own port", "since": now - 720],
-                ["session": "a3", "cwd": "/tmp/onramp-site", "pid": me, "state": "done", "task": "Tighten the landing page copy", "since": now - 60],
+                ["session": "a3", "cwd": "/tmp/station-site", "pid": me, "state": "done", "task": "Tighten the landing page copy", "since": now - 60],
                 ["session": "a4", "cwd": "/tmp/gone", "pid": 999_999, "state": "working", "since": now],
             ]
             try? FileManager.default.createDirectory(at: AgentHook.dir, withIntermediateDirectories: true)

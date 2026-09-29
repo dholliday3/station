@@ -302,9 +302,9 @@ private struct RowActionsEditor: View {
                     RowAction.symbolImage(a.symbol).frame(width: 18).foregroundStyle(on ? .primary : .secondary)
                     Text(a.title).foregroundStyle(on ? .primary : .secondary)
                     Spacer()
-                    if a == .onramp, !PRActions.onrampInstalled {
+                    if a == .reviewInStation, !PRActions.stationInstalled {
                         // The button only shows once Station is installed; say where to get it.
-                        Link(destination: PRActions.onrampDownload) {
+                        Link(destination: PRActions.stationDownload) {
                             HStack(spacing: 2) {
                                 Text("Get Station")
                                 Image(systemName: "arrow.up.right").imageScale(.small)

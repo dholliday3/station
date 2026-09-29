@@ -9,7 +9,7 @@ build/
 # Rust core and its generated bindings (scripts/build-core.sh)
 core/target/
 Review/Frameworks/
-Review/Sources/onramp/Generated/
+Review/Sources/StationKit/Generated/
 # macOS
 .DS_Store
 dist/

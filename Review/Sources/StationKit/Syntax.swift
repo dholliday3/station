@@ -75,7 +75,7 @@ enum Syntax {
 
     /// Highlight right now, on this (background) thread: for files about to be swapped in on screen.
     static func highlightNow(path: String, text: String) -> SyntaxSpans? {
-        onramp.highlight(path: path, text: text).map(SyntaxSpans.init)
+        StationKit.highlight(path: path, text: text).map(SyntaxSpans.init)
     }
 
     static func isOnScreen(_ path: String) -> Bool {
@@ -94,7 +94,7 @@ enum Syntax {
             if onlyIfOnScreen, !isOnScreen(path) {
                 result = .skipped
             } else {
-                result = onramp.highlight(path: path, text: text).map { .spans(SyntaxSpans($0)) } ?? .noLanguage
+                result = StationKit.highlight(path: path, text: text).map { .spans(SyntaxSpans($0)) } ?? .noLanguage
             }
             DispatchQueue.main.async { MainActor.assumeIsolated { done(result) } }
         }

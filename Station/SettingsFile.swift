@@ -1,6 +1,6 @@
 import Foundation
 import Observation
-import onramp
+import StationKit
 
 /// settings.json: what you choose on purpose, in one file you can also edit by hand. The review
 /// windows keep their settings in it too (they merge their keys, as this does), and each side
@@ -8,7 +8,7 @@ import onramp
 @MainActor
 @Observable
 final class SettingsFile {
-    static let shared = SettingsFile(url: OnrampHostSettings.url)
+    static let shared = SettingsFile(url: StationHostSettings.url)
 
     let url: URL
     private(set) var values: [String: Any] = [:]
@@ -70,8 +70,8 @@ final class SettingsFile {
 }
 
 /// Where the file is (the review windows' settings file: one file for the whole app).
-enum OnrampHostSettings {
-    static var url: URL { OnrampHost.settingsURL }
+enum StationHostSettings {
+    static var url: URL { StationHost.settingsURL }
 }
 
 /// Where UserPrefs keeps each setting: the ones you choose on purpose in settings.json, the ones

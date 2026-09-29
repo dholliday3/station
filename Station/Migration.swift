@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import onramp
+import StationKit
 
 /// Bring over an Onramp and Stoplight setup, once, when you say so. The only code in Station that
 /// reads the old names. Settings and review data are copied, never moved; the old commands and
@@ -110,7 +110,7 @@ enum Migration {
         NSApp.activateUnlessTesting()
         w.makeKeyAndOrderFront(nil)
         DispatchQueue.global(qos: .userInitiated).async {
-            let agents = OnrampHost.onrampAgentRegistrations()
+            let agents = StationHost.onrampAgentRegistrations()
             DispatchQueue.main.async { MainActor.assumeIsolated { model.found.agents = agents; model.moveAgents = !agents.isEmpty } }
         }
     }
@@ -136,7 +136,7 @@ enum Migration {
             for (key, value) in f.onramp { UserDefaults.standard.set(value, forKey: key.replacingOccurrences(of: "onramp.", with: "station.")) }
             // Onramp's settings.json, themes, extensions, reviewers and review context.
             if let config = f.onrampConfig {
-                let station = OnrampHost.settingsURL.deletingLastPathComponent()
+                let station = StationHost.settingsURL.deletingLastPathComponent()
                 if let data = try? Data(contentsOf: config.appendingPathComponent("settings.json")),
                    let old = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     for (key, value) in old { SettingsFile.shared.set(key, value) }
@@ -164,7 +164,7 @@ enum Migration {
         }
         if c.commands {
             for link in f.oldCommands { try? fm.removeItem(at: link) }
-            if OnrampHost.installCommand() { done.append("The station command is in ~/.local/bin" + (f.oldCommands.isEmpty ? "" : "; onramp and ramp are gone")) }
+            if StationHost.installCommand() { done.append("The station command is in ~/.local/bin" + (f.oldCommands.isEmpty ? "" : "; onramp and ramp are gone")) }
         }
         if c.trash {
             for id in ["com.timwheeler.onramp", "com.timwheeler.stoplight"] {
@@ -210,7 +210,7 @@ final class MigrationModel {
         var lines = Migration.run(found, choices)
         guard moveAgents, found.agents?.isEmpty == false else { return finish(lines) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let problems = OnrampHost.switchAgentsFromOnramp()
+            let problems = StationHost.switchAgentsFromOnramp()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     lines.append(problems.isEmpty ? "Agents now use station" : "Agents: " + problems.joined(separator: "; "))

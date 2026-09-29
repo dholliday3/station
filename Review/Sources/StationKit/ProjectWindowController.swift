@@ -170,7 +170,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
 
     private func modeView(_ m: StationMode) -> NSViewController? {
         if let v = modeViews[m] { return v }
-        guard let v = OnrampHost.makeModeView?(m) else { return nil }
+        guard let v = StationHost.makeModeView?(m) else { return nil }
         modeViews[m] = v
         modeHost.set(v, for: m)
         return v

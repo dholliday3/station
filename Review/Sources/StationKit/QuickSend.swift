@@ -98,7 +98,7 @@ final class QuickSend {
         let conversation = thread.entries.filter { !$0.pending }.map { e in
             "\(e.author): " + e.body.replacingOccurrences(of: "\n", with: "\n  ")
         }.joined(separator: "\n")
-        let context = reviewContext(repoRoot: repo, configDir: onrampConfigDir.path).text
+        let context = reviewContext(repoRoot: repo, configDir: stationConfigDir.path).text
         return """
         You're answering one code review comment in Station. It's assigned to you; don't look for other comments.
 

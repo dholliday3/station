@@ -25,7 +25,7 @@ enum Extensions {
         // shipped with no syntax highlighting, fonts, themes or built-in reviewers.
         let exeDir = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent()
         for dir in [Bundle.main.resourceURL, exeDir].compactMap({ $0 }) {
-            let bundle = dir.appendingPathComponent("onramp_onramp.bundle")
+            let bundle = dir.appendingPathComponent("StationKit_StationKit.bundle")
             let url = (Bundle(url: bundle)?.resourceURL ?? bundle).appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }

@@ -166,7 +166,7 @@ enum MCPServer {
             let t = try setResolved(repoRoot: repoRoot, id: try arg("id"), resolved: true, author: author, note: args["note"] as? String)
             return "Resolved \(t.id)."
         case "get_review_context":
-            let b = reviewContext(repoRoot: repoRoot, configDir: onrampConfigDir.path)
+            let b = reviewContext(repoRoot: repoRoot, configDir: stationConfigDir.path)
             if b.files.isEmpty { return "The user hasn't added any review context." }
             var out = "# Review context (\(b.files.count) file\(b.files.count == 1 ? "" : "s"))\n\n" + b.text
             if !b.skipped.isEmpty { out += "\n(Skipped: " + b.skipped.joined(separator: ", ") + ")" }

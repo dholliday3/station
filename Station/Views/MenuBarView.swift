@@ -643,7 +643,7 @@ struct PRRow: View {
 
     /// The PR's diff in Station (a branch row has no PR to review: its commit on GitHub).
     private func review() {
-        if pr.isBranch { openURL(pr.url) } else { PRActions.openInOnramp(pr) }
+        if pr.isBranch { openURL(pr.url) } else { PRActions.openInStation(pr) }
     }
 
     /// "3 of 16 checks failed" / "2 of 4 checks running" / "12 checks passed" / "1 check passed"
@@ -754,8 +754,8 @@ struct PRRow: View {
             case .review: RowButton(symbol: a.symbol, help: "Adversarial review with \(model.agentTitle) (⇧⌘F)", tint: nil) {
                 model.review(pr)
             }
-            case .onramp: RowButton(symbol: a.symbol, help: a.title, tint: nil) {
-                PRActions.openInOnramp(pr)
+            case .reviewInStation: RowButton(symbol: a.symbol, help: a.title, tint: nil) {
+                PRActions.openInStation(pr)
             }
             }
         }

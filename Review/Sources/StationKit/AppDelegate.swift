@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Updater.shared.start()
         MenuBarItem.shared.start()
         PerfMark.mark("updater+menubar")
-        OnrampHost.didLaunch?()
+        StationHost.didLaunch?()
         PerfMark.mark("host")
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "link-cold" { // launched by a link, nothing recent
             FileHandle.standardError.write("[selftest] didFinishLaunching: \(controllers.count) tabs\n".data(using: .utf8)!)
@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func handleOpen(_ url: URL) {
         if url.scheme == "station", DeepLinks.isReview(url) { return DeepLinks.handle(url, app: self) }
-        if !url.isFileURL, let host = OnrampHost.openURL { return host(url) }
+        if !url.isFileURL, let host = StationHost.openURL { return host(url) }
         if let root = RecentProjects.repoRoot(of: url.path) { open(tabFor: root) }
     }
 
@@ -217,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Settings
 
     @objc func openSettings(_ sender: Any?) {
-        if let show = OnrampHost.showSettings { return show() } // Station's Settings window
+        if let show = StationHost.showSettings { return show() } // Station's Settings window
         Style.shared.save() // make sure the file exists with every key
         NSWorkspace.shared.open(Style.settingsURL)
     }
@@ -250,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     /// A new reviewer of yours, from the red team as a template, opened in your editor.
     @objc func newReviewer(_ sender: Any?) {
-        let dir = onrampConfigDir.appendingPathComponent("reviewers")
+        let dir = stationConfigDir.appendingPathComponent("reviewers")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var url = dir.appendingPathComponent("my-reviewer.toml")
         var n = 2

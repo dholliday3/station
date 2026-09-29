@@ -46,7 +46,7 @@ enum CLI {
             case "help", "--help", "-h":
                 print(usage)
             case "context":
-                let b = reviewContext(repoRoot: try repoRoot(dir), configDir: onrampConfigDir.path)
+                let b = reviewContext(repoRoot: try repoRoot(dir), configDir: stationConfigDir.path)
                 if b.files.isEmpty { print("No review context yet. Add files in the app: Review → Context… (⌥⌘K)") } else { print(b.text) }
                 for s in b.skipped { FileHandle.standardError.write("skipped: \(s)\n".data(using: .utf8)!) }
             case "extensions":

@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import StoplightCore
-import onramp
+import StationKit
 
 /// The menu bar half of Station: the status item, its panel, and the Settings window.
 @MainActor
@@ -21,8 +21,8 @@ enum StationMenuBar {
         PerfMark.mark("agentboard")
         SessionCatalog.shared.start()
         PerfMark.mark("catalog")
-        // The main window's Agents and Pull Requests tabs (Review is Onramp's own).
-        OnrampHost.makeModeView = { mode -> NSViewController in
+        // The main window's Agents and Pull Requests tabs (Review is StationKit's own).
+        StationHost.makeModeView = { mode -> NSViewController in
             mode == .agents ? NSHostingController(rootView: AgentsView()) : NSHostingController(rootView: PullRequestsPane(model: model))
         }
         // ⌘⇧A: the Agents window, first in the Review menu.
@@ -50,12 +50,12 @@ enum StationMenuBar {
         }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "modes" { // the main window's tabs, one capture each
             let env = ProcessInfo.processInfo.environment
-            OnrampHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
+            StationHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
             for (i, mode) in StationMode.allCases.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4 + Double(i) * 5) {
-                    let ok = OnrampHost.show(mode)
+                    let ok = StationHost.show(mode)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        let w = OnrampHost.frontWindow
+                        let w = StationHost.frontWindow
                         FileHandle.standardError.write("[selftest] mode \(mode.title): shown=\(ok) content=\(w.map { "\($0.windowNumber) \(type(of: $0.contentViewController!))" } ?? "none") windows=\(NSApp.windows.filter { $0.toolbar != nil }.map(\.windowNumber))\n".data(using: .utf8)!)
                         if let out = env["STATION_SNAP_OUT"], let w {
                             let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

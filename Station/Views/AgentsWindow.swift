@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import onramp
+import StationKit
 
 /// ⌘⇧A: every Claude Code session, live and past. What needs you first, then what's running,
 /// what's idle (finished a turn, waiting for your next prompt), then recent ones that ended.
@@ -10,7 +10,7 @@ enum AgentsWindow {
 
     /// The main window's Agents tab when a window is open, else this standalone window.
     static func present() {
-        if !OnrampHost.show(.agents) { show() }
+        if !StationHost.show(.agents) { show() }
     }
 
     static func show() {
@@ -255,7 +255,7 @@ private struct SessionActions: View {
                 Task { try? await AgentLauncher.runInTerminal("claude --resume \(session.id)", directory: session.cwd, title: "Resume · \(session.project)") }
             }
         }
-        if !session.cwd.isEmpty { Button("Review Its Changes") { OnrampHost.openProject(session.cwd) } }
+        if !session.cwd.isEmpty { Button("Review Its Changes") { StationHost.openProject(session.cwd) } }
         if let pr = session.info?.pr { Button("Open PR #\(pr.number)") { NSWorkspace.shared.open(pr.url) } }
         Button("Copy Session ID") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(session.id, forType: .string) }
     }

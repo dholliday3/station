@@ -16,8 +16,8 @@ settings:
 packages:
   StoplightCore:
     path: StoplightCore
-  Onramp:
-    path: Review # Onramp's review windows, CLI and MCP server; its Rust core comes from scripts/build-core.sh
+  StationKit:
+    path: Review # review windows, CLI and MCP server; its Rust core comes from scripts/build-core.sh
 targets:
   Station:
     type: application
@@ -29,8 +29,8 @@ targets:
         buildPhase: resources
     dependencies:
       - package: StoplightCore
-      - package: Onramp
-        product: onramp
+      - package: StationKit
+        product: StationKit
       - target: StationWidget
         embed: true
     info:

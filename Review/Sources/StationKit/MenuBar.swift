@@ -43,7 +43,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     @objc private func readMarksChanged() { if item != nil { refresh() } }
 
     /// Station shows agents on its menu bar dots: no icon of our own.
-    private var hosted: Bool { OnrampHost.agentsChanged != nil }
+    private var hosted: Bool { StationHost.agentsChanged != nil }
 
     @objc private func settingsChanged() {
         let s = Style.shared.settings
@@ -134,7 +134,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     private func redrawIcon() {
         let working = projects.contains(where: \.isWorking), dot = projects.contains(where: \.needsYou)
-        if let report = OnrampHost.agentsChanged { return report(working, dot) }
+        if let report = StationHost.agentsChanged { return report(working, dot) }
         guard let button = item?.button else { return }
         button.image = Self.icon(working: working, dot: dot)
         let waiting = projects.reduce(0) { $0 + $1.waiting }

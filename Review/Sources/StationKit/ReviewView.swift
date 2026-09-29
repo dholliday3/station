@@ -381,7 +381,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
         let files = document.files.map(\.path)
         let pr = prNumber.flatMap { GitHub.cached(repo: repo, number: $0) }
         let title = pr.map { "pull request #\(prNumber!) \u{201C}\($0.title)\u{201D}" } ?? base.branch.map { "the changes against \($0)" }
-        let context = reviewContext(repoRoot: repo, configDir: onrampConfigDir.path).text
+        let context = reviewContext(repoRoot: repo, configDir: stationConfigDir.path).text
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let workDir = readOnly ? ((try? reviewCheckout(repoRoot: repo)) ?? repo) : repo // a PR: its own read-only checkout
             DispatchQueue.main.async {
@@ -627,7 +627,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
         guard document.dirtyCount == 0 else { return notice.show("Save your edits first (⌘S).") }
         let repo = repoPath
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try onramp.switchBranch(repoRoot: repo, branch: branch) }
+            let result = Result { try StationKit.switchBranch(repoRoot: repo, branch: branch) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {
@@ -803,7 +803,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
                     let committed = sha != nil
                     self.gitButton.run(.failed, label: committed ? "Committed; push failed" : "Failed")
                     self.needsLayout = true
-                    self.notice.show((committed ? "Committed \(sha!), but the push failed: " : "") + onramp.message(for: error))
+                    self.notice.show((committed ? "Committed \(sha!), but the push failed: " : "") + StationKit.message(for: error))
                     if committed { self.reload() }
                 }
             }
@@ -843,7 +843,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
                         popover?.close()
                         self.openPullRequest(n) // re-fetch: it's merged now
                         done(nil)
-                    case let .failure(e): done(onramp.message(for: e))
+                    case let .failure(e): done(StationKit.message(for: e))
                     }
                 }
             }
@@ -1097,7 +1097,7 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     /// Resolve or reopen a thread from the side panel (its file may not be in the diff).
     func resolve(_ t: Thread, _ resolved: Bool) {
         do {
-            _ = try onramp.setResolved(repoRoot: repoPath, id: t.id, resolved: resolved, author: author, note: nil)
+            _ = try StationKit.setResolved(repoRoot: repoPath, id: t.id, resolved: resolved, author: author, note: nil)
             if resolved { ReadMarks.markRead([t]) }
             reloadThreads()
         } catch {
@@ -1810,7 +1810,7 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     func reloadThreads() {
         let pr = prNumber.map(UInt32.init)
         allThreads = ((try? loadThreads(repoRoot: repoPath)) ?? []).filter { threadInView(thread: $0, pr: pr) }
-        pendingCount = Int((try? onramp.pendingCount(repoRoot: repoPath, author: author)) ?? 0)
+        pendingCount = Int((try? StationKit.pendingCount(repoRoot: repoPath, author: author)) ?? 0)
         let byPath = Dictionary(grouping: allThreads, by: \.path)
         for (i, file) in files.enumerated() {
             let mine = byPath[file.path] ?? []

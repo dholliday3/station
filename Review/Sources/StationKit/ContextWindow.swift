@@ -37,7 +37,7 @@ final class ContextWindowController: NSWindowController, NSWindowDelegate {
 
     /// Enabled sources in both scopes (for the toolbar count).
     static func enabledCount(repo: String) -> Int {
-        let config = onrampConfigDir.path
+        let config = stationConfigDir.path
         return (contextSources(repoRoot: repo, configDir: config, scope: .repo) + contextSources(repoRoot: repo, configDir: config, scope: .global))
             .filter(\.enabled).count
     }
@@ -147,7 +147,7 @@ final class ContextWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateSummary() {
-        let b = reviewContext(repoRoot: repo, configDir: onrampConfigDir.path)
+        let b = reviewContext(repoRoot: repo, configDir: stationConfigDir.path)
         let kb = Double(b.files.reduce(0) { $0 + $1.bytes }) / 1000
         var text = b.files.isEmpty ? "Agents get nothing yet." : "Agents get \(b.files.count) file\(b.files.count == 1 ? "" : "s") · \(kb < 10 ? String(format: "%.1f", kb) : String(Int(kb))) KB"
         if !b.skipped.isEmpty { text += " · skipped \(b.skipped.count)" }
@@ -159,14 +159,14 @@ final class ContextWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Model
 
     private func load() {
-        let config = onrampConfigDir.path
+        let config = stationConfigDir.path
         entries = contextSources(repoRoot: repo, configDir: config, scope: .repo).map { Entry(source: $0, scope: .repo) }
             + contextSources(repoRoot: repo, configDir: config, scope: .global).map { Entry(source: $0, scope: .global) }
         rebuild()
     }
 
     private func save() {
-        let config = onrampConfigDir.path
+        let config = stationConfigDir.path
         for scope in [ContextScope.repo, .global] {
             try? setContextSources(repoRoot: repo, configDir: config, scope: scope, sources: entries.filter { $0.scope == scope }.map(\.source))
         }

@@ -24,7 +24,7 @@ final class ReviewerRun {
     /// Reviewers, built-in and yours and the repo's (a later one with the same id wins).
     static func all(repo: String) -> [Reviewer] {
         let builtin = Extensions.resource("Reviewers")?.path ?? ""
-        return listReviewers(repoRoot: repo, configDir: onrampConfigDir.path, builtinDir: builtin).reviewers
+        return listReviewers(repoRoot: repo, configDir: stationConfigDir.path, builtinDir: builtin).reviewers
     }
 
     init(reviewer: Reviewer, repo: String, workDir: String, files: [ReviewFile], title: String?, description: String?) {
@@ -126,7 +126,7 @@ final class ReviewerRun {
     }
 
     static func prompt(_ r: Reviewer, files: [ReviewFile], title: String?, description: String?, repo: String) -> String {
-        let context = reviewContext(repoRoot: repo, configDir: onrampConfigDir.path).text
+        let context = reviewContext(repoRoot: repo, configDir: stationConfigDir.path).text
         // What it reported before (still open, kept or dismissed): not to be repeated in new words.
         let before = ((try? loadThreads(repoRoot: repo)) ?? []).filter { $0.source?.hasPrefix("reviewer:\(r.id):") == true }.map { t in
             let title = t.entries.first?.body.components(separatedBy: "\n").first?.replacingOccurrences(of: "**", with: "") ?? ""

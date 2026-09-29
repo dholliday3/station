@@ -1,5 +1,5 @@
 import AppKit
-import onramp
+import StationKit
 import Carbon.HIToolbox
 import StoplightCore
 
@@ -151,14 +151,14 @@ final class GlobalHotkey: @unchecked Sendable {
 /// Clipboard actions shared by the row buttons, the context menu, and the hotkeys.
 enum PRActions {
     /// Reviews open in Station's own windows, so "Review in Station" is always there.
-    static var onrampInstalled: Bool { true }
+    static var stationInstalled: Bool { true }
 
     /// Where to get Station (Settings → Row buttons links here while it isn't installed).
-    static let onrampDownload = URL(string: "https://github.com/timmywheels/station/releases/latest")!
+    static let stationDownload = URL(string: "https://github.com/timmywheels/station/releases/latest")!
 
     /// Open the PR's review in a Station window (as a tab; it finds your local clone).
-    @MainActor static func openInOnramp(_ pr: PullRequest) {
-        OnrampHost.openPullRequest(repo: pr.repo, number: pr.number)
+    @MainActor static func openInStation(_ pr: PullRequest) {
+        StationHost.openPullRequest(repo: pr.repo, number: pr.number)
     }
 
     static func copyURL(_ pr: PullRequest) { copy(pr.url.absoluteString) }

@@ -32,7 +32,7 @@ Release: `scripts/release.sh` (Developer ID, notarized with the `station` notary
 - `Station/`: the app target: menu bar, panel, Settings; `main.swift` hands the launch to the review module.
 - `StationWidget/`: the widget.
 - `StoplightCore/`: menu bar models, the GitHub provider, notification rules (Swift package).
-- `Review/`: review windows, CLI and MCP server (Swift package, module `onramp`).
+- `Review/`: review windows, CLI and MCP server (Swift package, module `StationKit`).
 - `core/`: the review core in Rust (diff, comments, git), bridged with UniFFI.
 - `integrations/`: the Claude Code plugin.
 - `design/station/`: the app icon (dark and light) and the script that draws it; `scripts/make-app-icon.swift` turns it into the app's icons.

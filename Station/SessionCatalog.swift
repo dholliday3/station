@@ -1,6 +1,6 @@
 import Foundation
 import Observation
-import onramp
+import StationKit
 
 /// Every Claude Code session on this Mac, live and past, from Claude Code's own transcripts
 /// (~/.claude/projects/<folder>/<session id>.jsonl) plus the live state `station hook` keeps.
@@ -67,7 +67,7 @@ final class SessionCatalog {
 
     func start() {
         guard timer == nil else { return }
-        try? FileManager.default.removeItem(at: OnrampHostSettingsDir.url.appendingPathComponent("sessions-cache.json")) // where 1.1 kept it
+        try? FileManager.default.removeItem(at: StationHostSettingsDir.url.appendingPathComponent("sessions-cache.json")) // where 1.1 kept it
         tallies = (try? Data(contentsOf: Self.cacheURL)).flatMap { try? JSONDecoder().decode([String: Tally].self, from: $0) } ?? [:]
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in MainActor.assumeIsolated { SessionCatalog.shared.refresh() } }
@@ -297,6 +297,6 @@ final class SessionCatalog {
 }
 
 /// Station's config folder (~/.config/station).
-enum OnrampHostSettingsDir {
-    nonisolated static var url: URL { OnrampHost.settingsURL.deletingLastPathComponent() }
+enum StationHostSettingsDir {
+    nonisolated static var url: URL { StationHost.settingsURL.deletingLastPathComponent() }
 }

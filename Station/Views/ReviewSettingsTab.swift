@@ -1,5 +1,5 @@
 import SwiftUI
-import onramp
+import StationKit
 
 /// The review windows' settings: how the diff looks, comment sync, the agent session. They live
 /// in settings.json, which the windows watch, so every change here applies straight away.
@@ -27,7 +27,7 @@ struct ReviewSettingsTab: View {
                 themePicker("Light theme", key: "theme_light", dark: false)
                 themePicker("Dark theme", key: "theme_dark", dark: true)
                 Picker("Font", selection: string("font_family", "")) {
-                    ForEach(OnrampHost.fontFamilies, id: \.self) { f in Text(f).tag(f == OnrampHost.fontFamilies.first ? "" : f) }
+                    ForEach(StationHost.fontFamilies, id: \.self) { f in Text(f).tag(f == StationHost.fontFamilies.first ? "" : f) }
                 }
                 Stepper(value: number("font_size", 12.5), in: 9...24, step: 0.5) {
                     LabeledContent("Font size", value: String(format: "%g pt", number("font_size", 12.5).wrappedValue))
@@ -77,7 +77,7 @@ struct ReviewSettingsTab: View {
     }
 
     private func themePicker(_ title: String, key: String, dark: Bool) -> some View {
-        let names = OnrampHost.themeNames(dark: dark)
+        let names = StationHost.themeNames(dark: dark)
         return Picker(title, selection: string(key, names.first ?? "")) {
             ForEach(names, id: \.self) { Text($0).tag($0) }
         }
