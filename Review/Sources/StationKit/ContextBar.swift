@@ -141,12 +141,13 @@ private struct Chip<Content: View>: View {
 }
 
 /// CI as a ring: green fills as checks pass, red if any failed; spins while any are running.
-private struct CheckRing: View {
+public struct CheckRing: View {
     let checks: ReviewContext.Checks
+    public init(checks: ReviewContext.Checks) { self.checks = checks }
     @State private var spin = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    public var body: some View {
         let done = Double(checks.passed + checks.failed) / Double(max(1, checks.total))
         let color: Color = checks.failed > 0 ? .red : checks.running > 0 ? .orange : .green
         ZStack {
@@ -167,12 +168,13 @@ private struct CheckRing: View {
 }
 
 /// A session's status: pulses while it's running, so a glance says "working".
-private struct AgentDot: View {
+public struct AgentDot: View {
     let state: ReviewContext.AgentState
+    public init(state: ReviewContext.AgentState) { self.state = state }
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    public var body: some View {
         Circle().fill(state.color)
             .frame(width: 7, height: 7)
             .overlay {

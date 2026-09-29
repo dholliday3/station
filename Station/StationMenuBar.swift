@@ -87,6 +87,7 @@ enum StationMenuBar {
             for (i, mode) in StationMode.allCases.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4 + Double(i) * 5) {
                     let ok = StationHost.show(mode)
+                    if mode == .agents, let id = env["STATION_SELFTEST_AGENT"] { StationHost.selectAgent?(id) }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                         let w = StationHost.frontWindow
                         FileHandle.standardError.write("[selftest] mode \(mode.title): shown=\(ok) content=\(w.map { "\($0.windowNumber) \(type(of: $0.contentViewController!))" } ?? "none") windows=\(NSApp.windows.filter { $0.toolbar != nil }.map(\.windowNumber))\n".data(using: .utf8)!)

@@ -257,7 +257,7 @@ private struct SessionActions: View {
                 Task { try? await AgentLauncher.runInTerminal("claude --resume \(session.id)", directory: session.cwd, title: "Resume · \(session.project)") }
             }
         }
-        if !session.cwd.isEmpty { Button("Review Its Changes") { StationHost.go(.review(repo: session.cwd)) } }
+        if let root = session.checkout { Button("Review Its Changes") { StationHost.go(.review(repo: root)) } }
         if let pr = session.info?.pr {
             Button("Review PR #\(pr.number)") {
                 if NSEvent.modifierFlags.contains(.option) { NSWorkspace.shared.open(pr.url) } else { StationHost.go(.pullRequest(repo: pr.repo, number: pr.number)) }
@@ -285,6 +285,8 @@ private struct SessionDetail: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) { SessionActions(session: session) }.buttonStyle(.bordered).controlSize(.small)
+                if let pr = session.info?.pr { PRLink(pr: pr, checkout: session.checkout) }
+                ForEach(session.editedByCheckout, id: \.root) { group in EditedFiles(root: group.root, files: group.files) }
 
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
                     fact("Folder", session.cwd.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
@@ -328,4 +330,109 @@ private struct SessionDetail: View {
 final class AgentsSelection {
     static let shared = AgentsSelection()
     var id: String?
+}
+
+/// Which git checkout a path is in: the nearest folder up with a .git (a folder, or a worktree's
+/// .git file). A file-system walk, no git; remembered.
+@MainActor
+enum Checkouts {
+    private static var roots: [String: String] = [:]
+
+    static func root(of path: String) -> String? {
+        var dir = (path as NSString).standardizingPath
+        var seen: [String] = []
+        while dir != "/" && !dir.isEmpty {
+            if let known = roots[dir] { seen.forEach { roots[$0] = known }; return known }
+            seen.append(dir)
+            if FileManager.default.fileExists(atPath: dir + "/.git") { seen.forEach { roots[$0] = dir }; return dir }
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+        return nil
+    }
+}
+
+extension AgentSession {
+    /// The files it edited, by checkout (worktrees apart), most-edited checkout first.
+    @MainActor var editedByCheckout: [(root: String, files: [String])] {
+        var groups: [String: [String]] = [:]
+        for path in info?.edited ?? [] {
+            guard let root = Checkouts.root(of: path) else { continue }
+            groups[root, default: []].append(String(path.dropFirst(root.count + 1)))
+        }
+        return groups.map { ($0.key, $0.value) }.sorted { $0.1.count > $1.1.count }
+    }
+
+    /// Where its work is: the checkout it edited most, else the one it runs in.
+    @MainActor var checkout: String? { editedByCheckout.first?.root ?? (cwd.isEmpty ? nil : Checkouts.root(of: cwd)) }
+}
+
+/// The session's PR: a link to its diff in Station, with CI as a live ring.
+private struct PRLink: View {
+    let pr: (repo: String, number: Int, url: URL)
+    let checkout: String?
+
+    var body: some View {
+        let context = ReviewContextProvider.context(repo: checkout ?? "", slug: pr.repo, branch: nil, pr: pr.number)
+        HStack(spacing: 8) {
+            Button {
+                if NSEvent.modifierFlags.contains(.option) { NSWorkspace.shared.open(pr.url) } else { StationHost.go(.pullRequest(repo: pr.repo, number: pr.number)) }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.pull").foregroundStyle(.green)
+                    Text("\(pr.repo)#\(pr.number)").monospacedDigit()
+                    if let title = context.pr?.title { Text(title).foregroundStyle(.secondary).lineLimit(1) }
+                }
+            }
+            .buttonStyle(.link)
+            .help("Its diff in Station (⌥-click: on GitHub)")
+            if let checks = context.checks, checks.total > 0 {
+                Button {
+                    if let u = checks.url { StationHost.go(.web(u)) }
+                } label: {
+                    HStack(spacing: 5) {
+                        CheckRing(checks: checks)
+                        Text(checks.failed > 0 ? "\(checks.failed) failing" : checks.running > 0 ? "\(checks.passed)/\(checks.total) checks" : "checks passed")
+                            .foregroundStyle(checks.failed > 0 ? Color.red : Color.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Its checks")
+            }
+        }
+        .font(.callout)
+    }
+}
+
+/// "Edited in <checkout>": each file opens in Station's review of that checkout.
+private struct EditedFiles: View {
+    let root: String
+    let files: [String]
+    @State private var showAll = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("Edited in \((root as NSString).lastPathComponent)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("\(files.count)").font(.caption).foregroundStyle(.tertiary).monospacedDigit()
+                Spacer()
+                Button("Review") { StationHost.go(.review(repo: root)) }.buttonStyle(.link).font(.caption)
+            }
+            ForEach(showAll ? files : Array(files.prefix(12)), id: \.self) { file in
+                Button { StationHost.go(.file(repo: root, path: file, line: nil)) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc").foregroundStyle(.tertiary)
+                        Text((file as NSString).lastPathComponent)
+                        Text((file as NSString).deletingLastPathComponent).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                    }
+                    .font(.callout)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open \(file) in the review")
+            }
+            if files.count > 12 {
+                Button(showAll ? "Show fewer" : "Show all \(files.count)") { showAll.toggle() }.buttonStyle(.link).font(.caption)
+            }
+        }
+    }
 }
