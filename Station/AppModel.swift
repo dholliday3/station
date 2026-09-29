@@ -779,7 +779,11 @@ final class AppModel {
     }
 
     /// Any launched agent waiting on the user, or a review waiting on you. Drives the menu bar marker (US-034).
-    var agentNeedsAttention: Bool { reviewAgentsNeedYou || agentStatus.values.contains { $0.state == "attention" } }
+    var agentNeedsAttention: Bool { agentsNeedingYou > 0 }
+    /// How many agents wait on you: Claude sessions (the agent board), agents Station launched, and reviews.
+    var agentsNeedingYou: Int {
+        AgentBoard.shared.needsYou + agentStatus.values.filter { $0.state == "attention" }.count + (reviewAgentsNeedYou ? 1 : 0)
+    }
     private var lastLaunch: [String: Date] = [:]
 
     /// One button: worktree + terminal + agent with the failure as the prompt.

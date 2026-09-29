@@ -15,9 +15,11 @@ struct MenuBarView: View {
 
     @State private var topHeight: CGFloat = 0
     @State private var midHeight: CGFloat = 0
+    /// The agents, when they sit above a message instead of inside the list (which measures itself).
+    @State private var agentsHeight: CGFloat = 0
     @State private var footerHeight: CGFloat = 0
     private func report() {
-        let h = topHeight + midHeight + footerHeight + 2 /* dividers */
+        let h = topHeight + midHeight + footerHeight + agentsHeight + 2 /* dividers */
         if abs(model.chromeHeight - h) > 0.5 { model.chromeHeight = h }
     }
 
@@ -83,8 +85,28 @@ struct MenuBarView: View {
         .onChange(of: model.panelVisible) { _, visible in if !visible { model.isWatching = false; model.isSearching = false; model.searchText = "" } }
     }
 
-    @ViewBuilder
+    /// The PR list is up (it carries the agents at its top). Otherwise the agents sit above whatever
+    /// the panel is saying: they don't wait for GitHub.
+    private var listShown: Bool {
+        guard case .signedIn = model.auth else { return false }
+        return !(model.lastRefresh == nil && model.lastError == nil) && !model.isEmpty
+            && !(rowCount == 0 && (!model.statusFilter.isEmpty || !model.searchText.isEmpty))
+    }
+
     private var content: some View {
+        VStack(spacing: 0) {
+            if !listShown {
+                AgentsSection().background(GeometryReader { g in
+                    Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(agentsHeight - h) > 0.5 { agentsHeight = h; report() } }
+                })
+            }
+            prContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: listShown) { _, shown in if shown { agentsHeight = 0; report() } }
+    }
+
+    @ViewBuilder
+    private var prContent: some View {
         switch model.auth {
         case .unknown:
             centered("Connecting…")
@@ -107,7 +129,7 @@ struct MenuBarView: View {
                 // The panel has a user-chosen size; the list fills it and scrolls. Headers carry 8pt of their own; 4 more makes 12, matching the sides.
                 ScrollViewReader { proxy in
                     ScrollView {
-                        (model.tab == .queue && model.hasQueues ? AnyView(queueList) : AnyView(list))
+                        (model.tab == .queue && model.hasQueues ? AnyView(queueList) : AnyView(VStack(spacing: 0) { AgentsSection(); list }))
                             .background(GeometryReader { g in
                                 Color.clear.onChange(of: g.size.height, initial: true) { _, h in if abs(model.contentHeight - h) > 0.5 { model.contentHeight = h } }
                             })

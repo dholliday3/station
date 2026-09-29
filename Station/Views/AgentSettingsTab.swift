@@ -12,6 +12,15 @@ struct AgentSettingsTab: View {
         @Bindable var prefs = model.prefs
         Form {
             Section {
+                Toggle(isOn: Binding(get: { AgentBoard.shared.installed }, set: { $0 ? AgentBoard.shared.turnOn() : AgentBoard.shared.turnOff() })) {
+                    InfoLabel("Watch every Claude Code session", "Station adds hooks to ~/.claude/settings.json (your own hooks stay), so every session shows in the panel: working, waiting on you, or done. Off removes them.")
+                }
+            } header: {
+                Text("Your agents")
+            } footer: {
+                Text("A notification when a session needs you or finishes. Click one to go to its terminal.")
+            }
+            Section {
                 Picker(selection: $prefs.agent) {
                     Text("Off").tag("")
                     ForEach(AgentLauncher.Agent.allCases) { a in

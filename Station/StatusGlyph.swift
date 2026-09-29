@@ -11,12 +11,17 @@ enum StatusGlyph {
     static let housingPad: CGFloat = 4
 
     /// - housing: draw a dark rounded pill behind the dots (🚥 style) for contrast on busy wallpapers.
-    /// - attention: an agent is waiting on the user; adds a small orange marker (US-034).
+    /// - attention: how many agents are waiting on the user: a small orange marker for one, an
+    ///   orange pill with the number for more (US-034).
     static func image(for presence: StatusPresence, count: Int?, pop: CGFloat = 0, housing: Bool = false,
-                      attention: Bool = false, colorProfile: ColorProfile = .standard) -> NSImage {
+                      attention: Int = 0, colorProfile: ColorProfile = .standard) -> NSImage {
         let dotsWidth = dot * 3 + gap * 2
         let pad: CGFloat = housing ? housingPad : 0
-        let width = dotsWidth + pad * 2 + (attention ? 4 : 0)
+        let number = attention > 1 ? NSAttributedString(string: attention > 9 ? "9+" : "\(attention)", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold), .foregroundColor: NSColor.white,
+        ]) : nil
+        let pillWidth = number.map { max(10, ceil($0.size().width) + 5) } ?? 0
+        let width = dotsWidth + pad * 2 + (number != nil ? pillWidth - 2 : attention > 0 ? 4 : 0)
         let img = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             if housing {
                 let pill = NSRect(x: 0, y: (height - (dot + pad * 2)) / 2, width: width, height: dot + pad * 2)
@@ -37,7 +42,15 @@ enum StatusGlyph {
                 color.setFill()
                 NSBezierPath(ovalIn: rect).fill()
             }
-            if attention {
+            if let number {
+                let rect = NSRect(x: width - pillWidth, y: height / 2 + dot / 2 - 2, width: pillWidth, height: 10)
+                NSColor.windowBackgroundColor.setFill()
+                NSBezierPath(roundedRect: rect.insetBy(dx: -0.8, dy: -0.8), xRadius: 5.8, yRadius: 5.8).fill()
+                NSColor.systemOrange.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+                let size = number.size()
+                number.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
+            } else if attention > 0 {
                 let r: CGFloat = 3
                 let rect = NSRect(x: width - r * 2, y: height / 2 + dot / 2, width: r * 2, height: r * 2)
                 NSColor.windowBackgroundColor.setFill()
@@ -48,7 +61,7 @@ enum StatusGlyph {
             return true
         }
         img.isTemplate = false
-        img.accessibilityDescription = describe(presence) + (attention ? " · agent needs you" : "")
+        img.accessibilityDescription = describe(presence) + (attention == 1 ? " · an agent needs you" : attention > 1 ? " · \(attention) agents need you" : "")
         guard let count else { return img }
         return withBadge(img, text: "\(count)")
     }

@@ -50,6 +50,9 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
         guard let s = response.notification.request.content.userInfo["url"] as? String, let url = URL(string: s) else { return }
-        _ = await MainActor.run { NSWorkspace.shared.open(url) }
+        // Our own links are handled here, in this app: another app may also claim station://.
+        await MainActor.run {
+            if url.scheme == "station" { StationMenuBar.open(url) } else { NSWorkspace.shared.open(url) }
+        }
     }
 }

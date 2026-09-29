@@ -12,6 +12,8 @@ enum StationMenuBar {
         model.start()  // polling + snapshot server, at launch, not on first click
         statusPanel = StatusPanelController(model: model)
         AppIcon.start()
+        AgentBoard.shared.start()
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agents" { AgentsSelfTest.run() }
     }
 
     /// station://panel            → show the panel (small widget)
@@ -20,7 +22,9 @@ enum StationMenuBar {
         guard url.scheme == "station" else { return }
         let model = AppModel.shared
         let parts = url.pathComponents.dropFirst()
-        if url.host == "panel", let id = parts.first {
+        if url.host == "focus", let id = parts.first { // a notification about one of your agents
+            AgentBoard.shared.focus(id: id)
+        } else if url.host == "panel", let id = parts.first {
             model.reveal(prID: id)
             model.openPanel?()
         } else if url.host == "agent", parts.count >= 2 {

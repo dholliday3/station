@@ -28,6 +28,8 @@ enum CLI {
     static let commands: Set<String> = ["comments", "reply", "resolve", "reopen", "claim", "release", "prompt", "extensions", "context", "mcp", "help", "--help", "-h"]
 
     static func run(_ argv: [String]) -> Int32? {
+        // Claude Code's lifecycle hooks: first, and nothing else, so it stays a few milliseconds.
+        if argv.first == "hook" { return AgentHook.run(Array(argv.dropFirst())) }
         guard let command = argv.first, commands.contains(command) else { return nil }
         var args = Array(argv.dropFirst())
         // STATION_REPO: set for agents working in a PR's private checkout, so their

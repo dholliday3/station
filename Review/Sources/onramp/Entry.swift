@@ -21,6 +21,13 @@ public enum OnrampHost {
     /// Monospace font families for the review text, the default first.
     @MainActor public static var fontFamilies: [String] { Style.shared.monospaceFamilies }
 
+    /// Open the git repo containing `path` as a review tab (its changes, ready for comments).
+    @MainActor public static func openProject(_ path: String) {
+        guard let app = NSApp.delegate as? AppDelegate, let root = RecentProjects.repoRoot(of: path) else { return }
+        app.openProject(root)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// Open pull request `number` of `repo` ("owner/name") in a review tab, finding the local clone.
     @MainActor public static func openPullRequest(repo: String, number: Int) {
         guard let app = NSApp.delegate as? AppDelegate else { return }
