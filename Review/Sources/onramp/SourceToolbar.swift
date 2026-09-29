@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The window toolbar: which project/worktree (left) and which changes
 /// (right: the branch vs its base, uncommitted work, or one commit), like
@@ -12,7 +13,8 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
     private static let leftToggleID = NSToolbarItem.Identifier("station.toggleFiles")
     private static let modeID = NSToolbarItem.Identifier("station.mode")
     /// Agents · Pull Requests · Review, centred: which surface the window shows.
-    private let modePicker = NSSegmentedControl(labels: StationMode.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
+    private let modeModel = ModePickerModel()
+    private lazy var modePicker = NSHostingView(rootView: ModePicker(model: modeModel))
     var onMode: ((StationMode) -> Void)?
     /// The review-only controls, hidden in the other modes.
     private var reviewItems: [NSView] { [leftToggle, projectButton, changesButton, commentsButton] }
@@ -46,16 +48,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
         contextButton.horizontalPadding = 9
         contextButton.toolTip = "Review context: files agents read before working on your comments (⌥⌘K)"
         setContextCount(0)
-        modePicker.target = self
-        modePicker.action = #selector(modeClicked)
-        modePicker.segmentStyle = .separated
-        modePicker.controlSize = .regular
-        for m in StationMode.allCases {
-            modePicker.setLabel("", forSegment: m.rawValue)
-            modePicker.setImage(Self.tabLabel(m.title, shortcut: "⌘\(m.rawValue + 1)"), forSegment: m.rawValue)
-            modePicker.setToolTip("\(m.title) (⌘\(m.rawValue + 1))", forSegment: m.rawValue)
-        }
-        modePicker.selectedSegment = StationMode.review.rawValue
+        modeModel.onSelect = { [weak self] m in self?.onMode?(m) }
         leftToggle.target = self
         leftToggle.action = #selector(leftClicked)
         leftToggle.horizontalPadding = 9
@@ -88,26 +81,8 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
     @objc private func commentsClicked() { onToggleComments?() }
     @objc private func leftClicked() { onToggleFiles?() }
-    /// "Agents ⌘1": the name, then its shortcut dimmed, like a menu item. Drawn when displayed,
-    /// so the colours follow light and dark mode.
-    private static func tabLabel(_ title: String, shortcut: String) -> NSImage {
-        let text = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.labelColor])
-        text.append(NSAttributedString(string: "  " + shortcut, attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.tertiaryLabelColor]))
-        let size = text.size()
-        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)), flipped: false) { rect in
-            text.draw(at: NSPoint(x: 0, y: (rect.height - size.height) / 2))
-            return true
-        }
-        image.accessibilityDescription = title
-        return image
-    }
-
-    @objc private func modeClicked() {
-        if let m = StationMode(rawValue: modePicker.selectedSegment) { onMode?(m) }
-    }
-
     func setMode(_ m: StationMode) {
-        modePicker.selectedSegment = m.rawValue
+        modeModel.selected = m
         for v in reviewItems { v.isHidden = m != .review }
     }
     @objc private func contextClicked() { onOpenContext?() }
@@ -187,6 +162,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
         if id == Self.modeID {
             item.view = modePicker
             item.label = "Mode"
+            item.isBordered = false // the picker draws its own capsule
             return item
         } else if id == Self.leftToggleID {
             leftToggle.heightAnchor.constraint(equalToConstant: CapsuleButton.height).isActive = true
