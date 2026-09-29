@@ -397,3 +397,56 @@ final class AgentConnectViewController: NSViewController {
         }
     }
 }
+
+
+// MARK: Moving from Onramp
+
+extension AgentIntegration {
+    /// Agents still registered under Onramp's old name ("Claude Code", "Codex", "Cursor").
+    static func onrampRegistrations() -> [String] {
+        var found: [String] = []
+        if let claude = AgentTools.quoted("claude"),
+           shell("\(claude) plugin list").output.contains("onramp@onramp") || shell("\(claude) mcp get onramp").status == 0 { found.append("Claude Code") }
+        if let codex = AgentTools.quoted("codex"), shell("\(codex) mcp get onramp").status == 0 { found.append("Codex") }
+        if (readJSON(cursorConfig)["mcpServers"] as? [String: Any])?["onramp"] != nil { found.append("Cursor") }
+        return found
+    }
+
+    /// Swap each old `onramp` registration for Station's (the same thing Connect does). Returns what
+    /// went wrong, if anything; the rest still goes ahead.
+    static func switchFromOnramp() -> [String] {
+        var problems: [String] = []
+        func attempt(_ name: String, _ work: () throws -> Void) {
+            do { try work() } catch { problems.append("\(name): \(error)") }
+        }
+        if let claude = AgentTools.quoted("claude") {
+            let plugin = shell("\(claude) plugin list").output.contains("onramp@onramp"), server = shell("\(claude) mcp get onramp").status == 0
+            if plugin || server {
+                attempt("Claude Code") {
+                    if plugin {
+                        try shell("\(claude) plugin uninstall onramp@onramp").orThrow()
+                        _ = shell("\(claude) plugin marketplace remove onramp")
+                    }
+                    if server { try shell("\(claude) mcp remove onramp").orThrow() }
+                    if !all[0].check().isConnected { try all[0].connect() }
+                }
+            }
+        }
+        if let codex = AgentTools.quoted("codex"), shell("\(codex) mcp get onramp").status == 0 {
+            attempt("Codex") {
+                try shell("\(codex) mcp remove onramp").orThrow()
+                if !all[1].check().isConnected { try all[1].connect() }
+            }
+        }
+        var json = readJSON(cursorConfig)
+        if var servers = json["mcpServers"] as? [String: Any], servers["onramp"] != nil {
+            attempt("Cursor") {
+                servers["onramp"] = nil
+                servers["station"] = ["command": command, "args": ["mcp"]]
+                json["mcpServers"] = servers
+                try writeJSON(json, cursorConfig)
+            }
+        }
+        return problems
+    }
+}

@@ -772,6 +772,9 @@ final class AppModel {
     var reviewAgentsNeedYou = false
     /// settings.json changed on disk (edited by hand): take the new settings, and refetch if what
     /// Station follows changed.
+    /// Prefs were written from outside UserPrefs (bringing over an old setup): read them again.
+    func reloadPrefs() { settingsFileChanged() }
+
     private func settingsFileChanged() {
         let before = prefs
         prefs = UserPrefs()

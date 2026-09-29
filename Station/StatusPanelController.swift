@@ -147,6 +147,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         _ = add("Settings…", "gearshape", #selector(openSettings), key: ",")
 
         menu.addItem(.separator())
+        _ = add("Bring Over Onramp and Stoplight…", "square.and.arrow.down", #selector(bringOver))
         let login = add("Open at Login", "power", #selector(toggleLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
@@ -211,6 +212,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func bringOver() { Migration.offer() }
 
     // MARK: Glyph
 

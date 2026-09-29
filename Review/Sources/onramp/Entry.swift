@@ -28,6 +28,22 @@ public enum OnrampHost {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    // MARK: Moving from Onramp (Station's migration uses these)
+
+    /// Agents still registered under Onramp's old name. Slow (asks each agent's CLI): call off the main thread.
+    public static func onrampAgentRegistrations() -> [String] { AgentIntegration.onrampRegistrations() }
+    /// Swap those registrations for Station's. Returns problems, if any. Slow: off the main thread.
+    public static func switchAgentsFromOnramp() -> [String] { AgentIntegration.switchFromOnramp() }
+
+    /// `station` in ~/.local/bin, without a dialog. Returns whether it's there now.
+    @MainActor @discardableResult public static func installCommand() -> Bool {
+        guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return false }
+        let link = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/station")
+        try? FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: link)
+        return (try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: exe)) != nil
+    }
+
     /// Open pull request `number` of `repo` ("owner/name") in a review tab, finding the local clone.
     @MainActor public static func openPullRequest(repo: String, number: Int) {
         guard let app = NSApp.delegate as? AppDelegate else { return }

@@ -14,6 +14,12 @@ enum StationMenuBar {
         AppIcon.start()
         AgentBoard.shared.start()
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agents" { AgentsSelfTest.run() }
+        Migration.offerIfNeeded()
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "migration" { // read-only: what it finds, and the sheet
+            let f = Migration.find()
+            FileHandle.standardError.write("[selftest] found: stoplight \(f.stoplight.count) keys (\(f.stoplightSummary)); onramp \(f.onramp.count) keys; config \(f.onrampConfig != nil); review data in \(f.reviewData.count) repos; old commands \(f.oldCommands.map(\.lastPathComponent)); apps \(f.apps.map(\.lastPathComponent))\n".data(using: .utf8)!)
+            Migration.offer()
+        }
     }
 
     /// station://panel            → show the panel (small widget)
