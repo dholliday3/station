@@ -80,3 +80,40 @@ enum ReviewContextProvider {
         }
     }
 }
+
+/// Which Claude Code session goes with which PR ("owner/name#123" → the liveliest, latest one),
+/// from the PR links in transcripts. PR rows read it; rebuilt when sessions change.
+@MainActor
+@Observable
+final class AgentIndex {
+    static let shared = AgentIndex()
+    private(set) var byPR: [String: ReviewContext.Agent] = [:]
+
+    func agent(for pr: PullRequest) -> ReviewContext.Agent? { byPR["\(pr.repo.lowercased())#\(pr.number)"] }
+
+    func start() { rebuild() }
+
+    private func rebuild() {
+        let order: [AgentSession.Status: Int] = [.needsYou: 0, .running: 1, .idle: 2, .ready: 3, .ended: 4]
+        var out: [String: (Int, Date, ReviewContext.Agent)] = [:]
+        withObservationTracking {
+            for s in AgentSession.all() {
+                guard let pr = s.info?.pr else { continue }
+                let key = "\(pr.repo.lowercased())#\(pr.number)"
+                let rank = order[s.status] ?? 9
+                if let have = out[key], (have.0, -have.1.timeIntervalSince1970) <= (rank, -s.since.timeIntervalSince1970) { continue }
+                let state: ReviewContext.AgentState = switch s.status {
+                case .needsYou: .needsYou
+                case .running: .running
+                case .idle, .ready: .idle
+                case .ended: .ended
+                }
+                out[key] = (rank, s.since, .init(id: s.id, title: s.title, state: state))
+            }
+        } onChange: {
+            DispatchQueue.main.async { MainActor.assumeIsolated { AgentIndex.shared.rebuild() } }
+        }
+        let next = out.mapValues(\.2)
+        if next != byPR { byPR = next }
+    }
+}

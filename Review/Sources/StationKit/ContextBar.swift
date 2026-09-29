@@ -110,7 +110,7 @@ struct ContextBar: View {
     }
 }
 
-extension ReviewContext.AgentState {
+public extension ReviewContext.AgentState {
     var word: String {
         switch self { case .needsYou: "needs you"; case .running: "running"; case .idle: "idle"; case .ended: "done" }
     }

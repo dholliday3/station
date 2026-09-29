@@ -1,5 +1,6 @@
 import SwiftUI
 import StoplightCore
+import StationKit
 
 /// US-005. 360pt wide, scrolls past 480pt, list + footer, nothing else.
 /// Sections (US-010/011/012): Pinned, Mine, Watching. Headers only render when non-empty.
@@ -552,6 +553,20 @@ struct PRRow: View {
                         }
                         .buttonStyle(.plain)
                         .help("Reported by your agent \(st.at.compactAgo) ago. Click to jump to its terminal window; right-click the row to dismiss.")
+                    }
+                    if model.agentStatus[pr.id] == nil, let agent = AgentIndex.shared.agent(for: pr) {
+                        // The Claude Code session working on this PR: to it in Agents.
+                        Button { StationHost.go(.agents(session: agent.id)) } label: {
+                            HStack(spacing: 4) {
+                                AgentDot(state: agent.state)
+                                Text(agent.state == .ended ? "agent" : agent.state.word).font(.caption2)
+                            }
+                            .foregroundStyle(agent.state == .needsYou ? Color.orange : Color.secondary)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Capsule().fill(.quaternary))
+                        }
+                        .buttonStyle(.plain)
+                        .help("\(agent.title): show it in Agents")
                     }
                     if pr.status == .closed { tag("Closed", symbol: "xmark", tint: stateColor(.failure)) }
                     if pr.status == .open, !pr.isDraft, let label = pr.mergeState.label {
