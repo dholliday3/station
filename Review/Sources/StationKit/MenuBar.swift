@@ -29,7 +29,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// A finished review run shows for this long.
     private static let finishedFor: TimeInterval = 15 * 60
 
-    var isShown: Bool { item != nil }
+    /// Station draws its own dots, which are always there to come back to.
+    var isShown: Bool { item != nil || hosted }
 
     func start() {
         let env = ProcessInfo.processInfo.environment
