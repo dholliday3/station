@@ -85,6 +85,9 @@ enum StationMenuBar {
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "modes" { // the main window's tabs, one capture each
             let env = ProcessInfo.processInfo.environment
             StationHost.openProject(env["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath)
+            if let n = env["STATION_SELFTEST_PR"].flatMap(Int.init) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { StationHost.go(.pullRequest(repo: env["STATION_SELFTEST_REPO"] ?? "", number: n)) }
+            }
             for (i, mode) in StationMode.allCases.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4 + Double(i) * 5) {
                     let ok = StationHost.show(mode)

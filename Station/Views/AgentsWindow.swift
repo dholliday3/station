@@ -385,19 +385,7 @@ private struct PRLink: View {
             }
             .buttonStyle(.link)
             .help("Its diff in Station (⌥-click: on GitHub)")
-            if let checks = context.checks, checks.total > 0 {
-                Button {
-                    if let u = checks.url { StationHost.go(.web(u)) }
-                } label: {
-                    HStack(spacing: 5) {
-                        CheckRing(checks: checks)
-                        Text(checks.failed > 0 ? "\(checks.failed) failing" : checks.running > 0 ? "\(checks.passed)/\(checks.total) checks" : "checks passed")
-                            .foregroundStyle(checks.failed > 0 ? Color.red : Color.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .help("Its checks")
-            }
+            if let checks = context.checks, checks.total > 0 { ChecksChip(checks: checks) }
         }
         .font(.callout)
     }

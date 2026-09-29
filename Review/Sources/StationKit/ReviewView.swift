@@ -85,7 +85,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
             if self.contextModel.showingPR == pr.number { Navigator.go(.web(pr.url)) } else { Navigator.go(.pullRequest(repo: self.repoPath, number: pr.number)) }
         }
         contextModel.onAgent = { Navigator.go(.agents(session: $0)) }
-        contextModel.onChecks = { checks in if let u = checks.url { Navigator.go(.web(u)) } }
+        contextModel.onShowThread = { [weak self] id in self?.reveal(thread: id) }
         contextModel.onComments = { [weak self] in self?.onShowComments?() }
         NotificationCenter.default.addObserver(forName: .stationContextChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshContext() }
@@ -345,6 +345,11 @@ final class ReviewView: NSView, NSPopoverDelegate {
         contextModel.branch = pr.map { "#\($0)" + (branch.map { " · \($0)" } ?? "") } ?? branch
         contextModel.showingPR = pr
         contextModel.openComments = document.openCommentCount
+        // Failing checks CI left on lines here: "CI · <check>" threads, still open.
+        contextModel.ciThreads = Dictionary(document.threads.compactMap { t -> (String, String)? in
+            guard t.source?.hasPrefix("ci:") == true, t.status == .open, let a = t.entries.first?.author, a.hasPrefix("CI · ") else { return nil }
+            return (String(a.dropFirst(5)), t.id)
+        }, uniquingKeysWith: { a, _ in a })
         let context = StationHost.reviewContext?(repoPath, repoSlug, branch, pr) ?? ReviewContext()
         DeepLinks.log("context \(repoSlug ?? "nil") \(branch ?? "nil") \(pr.map(String.init) ?? "nil") → pr \(context.pr?.number.description ?? "none"), checks \(context.checks?.total ?? 0), agents \(context.agents.map { "\($0.title) \($0.state)" })")
         if context != contextModel.context { contextModel.context = context }
@@ -1184,6 +1189,8 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     private var allThreads: [Thread] = []
     /// A thread on this diff, by id.
     func thread(id: String) -> Thread? { allThreads.first { $0.id == id } }
+    /// The threads on this diff (in its scope).
+    var threads: [Thread] { allThreads }
     private var commentsWatcher: DispatchSourceFileSystemObject?
     private let hover = HoverOverlay()
     let stickyHeader = StickyHeaderView()

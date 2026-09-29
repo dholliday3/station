@@ -27,30 +27,38 @@ enum ReviewContextProvider {
             if !pr.checks.isEmpty {
                 let passed = pr.checks.filter { $0.state == .success || $0.state == .skipped }.count
                 let failed = pr.checks.filter { $0.state == .failure }.count
-                out.checks = .init(passed: passed, failed: failed, running: pr.checks.count - passed - failed, url: pr.checksURL)
+                let items = pr.checks.map { c in
+                    let state: ReviewContext.Checks.State = switch c.state {
+                    case .success: .passed
+                    case .failure: .failed
+                    case .pending: .running
+                    case .skipped: .skipped
+                    }
+                    return ReviewContext.Checks.Item(name: c.name, state: state, url: c.url)
+                }
+                out.checks = .init(passed: passed, failed: failed, running: pr.checks.count - passed - failed, url: pr.checksURL, items: items)
             }
         }
-        out.agents = agents(repo: repo, branch: branch)
+        out.agents = agents(repo: repo, branch: branch, slug: slug, pr: pr?.number ?? number)
         return out
     }
 
-    /// Sessions that worked here: edited files or worked in folders inside this checkout (agents
-    /// often run from the main checkout and work in its .claude/worktrees), or sit in it on the
-    /// same branch. Live first, then the most recent. The one that wrote the diff still
-    /// counts once it's finished.
-    private static func agents(repo: String, branch: String?) -> [ReviewContext.Agent] {
+    /// Sessions that worked on this diff: linked to its PR, or edited files in this very checkout
+    /// (not a worktree nested inside it) — on this branch, when they run in this checkout (a
+    /// transcript's branch is its own checkout's). Station's own background review sessions
+    /// don't count. Live first, then the most recent.
+    private static func agents(repo: String, branch: String?, slug: String?, pr: Int?) -> [ReviewContext.Agent] {
         let root = (repo as NSString).standardizingPath
         let order: [AgentSession.Status: Int] = [.needsYou: 0, .running: 1, .idle: 2, .ready: 3, .ended: 4]
         return AgentSession.all()
             .filter { s in
-                // What it touched: files it edited or folders it worked in, inside this checkout.
-                let inside = { (p: String) in let p = (p as NSString).standardizingPath; return p == root || p.hasPrefix(root + "/") }
-                if let info = s.info, info.edited.contains(where: inside) || info.folders.contains(where: inside) { return true }
-                let cwd = (s.cwd as NSString).standardizingPath
-                guard !cwd.isEmpty else { return false }
-                let sameBranch = branch != nil && s.info?.branch == branch
-                if cwd == root || cwd.hasPrefix(root + "/") { return s.info?.branch == nil || branch == nil || sameBranch }
-                return root.hasPrefix(cwd + "/") && sameBranch
+                guard let info = s.info, !info.isBackground else { return s.live != nil && Checkouts.root(of: s.cwd) == root }
+                // Linked to this PR (it made it, or worked on it).
+                if let pr, let slug, let p = info.pr, p.number == pr, p.repo.caseInsensitiveCompare(slug) == .orderedSame { return true }
+                guard info.edited.contains(where: { Checkouts.root(of: $0) == root }) else { return false }
+                // Its transcript's branch is its own checkout's: it says something here only if that's this one.
+                let runsHere = Checkouts.root(of: s.cwd) == root
+                return !runsHere || s.status != .ended || branch == nil || info.branch == nil || info.branch == branch
             }
             .sorted { (order[$0.status] ?? 9, $1.since) < (order[$1.status] ?? 9, $0.since) }
             .map { s in

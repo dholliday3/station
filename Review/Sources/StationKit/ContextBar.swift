@@ -15,10 +15,21 @@ public struct ReviewContext: Equatable, Sendable {
         public init(id: String, title: String, state: AgentState) { self.id = id; self.title = title; self.state = state }
     }
     public struct Checks: Equatable, Sendable {
+        public enum State: Sendable { case passed, failed, running, skipped }
+        public struct Item: Equatable, Sendable, Identifiable {
+            public var name: String, state: State, url: URL?
+            public var id: String { name }
+            public init(name: String, state: State, url: URL?) { self.name = name; self.state = state; self.url = url }
+        }
         public var passed: Int, failed: Int, running: Int
         public var url: URL?
+        /// Each check, failures first.
+        public var items: [Item] = []
         public var total: Int { passed + failed + running }
-        public init(passed: Int, failed: Int, running: Int, url: URL?) { self.passed = passed; self.failed = failed; self.running = running; self.url = url }
+        public init(passed: Int, failed: Int, running: Int, url: URL?, items: [Item] = []) {
+            self.passed = passed; self.failed = failed; self.running = running; self.url = url
+            self.items = items.sorted { $0.state.rank < $1.state.rank }
+        }
     }
     public var pr: PR?
     public var agents: [Agent] = []
@@ -40,10 +51,12 @@ final class ContextBarModel {
     var openComments = 0
     /// The review shows this PR (its chip then opens it on GitHub instead).
     var showingPR: Int?
+    /// Failing checks CI turned into comments on this diff: check name → thread id.
+    var ciThreads: [String: String] = [:]
+    @ObservationIgnored var onShowThread: ((String) -> Void)?
 
     @ObservationIgnored var onPR: ((ReviewContext.PR) -> Void)?
     @ObservationIgnored var onAgent: ((String) -> Void)?
-    @ObservationIgnored var onChecks: ((ReviewContext.Checks) -> Void)?
     @ObservationIgnored var onComments: (() -> Void)?
 }
 
@@ -71,10 +84,7 @@ struct ContextBar: View {
                 .frame(maxWidth: 320)
             }
             if let checks = model.context.checks, checks.total > 0 {
-                Chip(help: "Checks: \(checks.passed) passed, \(checks.failed) failed, \(checks.running) running") { model.onChecks?(checks) } label: {
-                    CheckRing(checks: checks)
-                    Text(checksLabel(checks)).monospacedDigit()
-                }
+                ChecksChip(checks: checks, ciThreads: model.ciThreads, onShowThread: { model.onShowThread?($0) })
             }
             ForEach(model.context.agents.prefix(3)) { agent in
                 Chip(help: "\(agent.title): \(agent.state.word). Show in Agents") { model.onAgent?(agent.id) } label: {
@@ -103,10 +113,89 @@ struct ContextBar: View {
         .animation(.snappy(duration: 0.25), value: model.context)
     }
 
-    private func checksLabel(_ c: ReviewContext.Checks) -> String {
-        if c.failed > 0 { return "\(c.failed) failing" }
-        if c.running > 0 { return "\(c.passed)/\(c.total)" }
-        return "\(c.passed) passed"
+}
+
+extension ReviewContext.Checks.State {
+    var rank: Int { switch self { case .failed: 0; case .running: 1; case .passed: 2; case .skipped: 3 } }
+}
+
+public extension ReviewContext.Checks {
+    /// "2 failing", "5/12", "12 passed".
+    var label: String {
+        if failed > 0 { return "\(failed) failing" }
+        if running > 0 { return "\(passed)/\(total)" }
+        return "\(passed) passed"
+    }
+}
+
+/// CI's chip: the ring and a count; click for every check.
+public struct ChecksChip: View {
+    let checks: ReviewContext.Checks
+    var ciThreads: [String: String] = [:]
+    var onShowThread: ((String) -> Void)?
+    @State private var open = false
+
+    public init(checks: ReviewContext.Checks, ciThreads: [String: String] = [:], onShowThread: ((String) -> Void)? = nil) {
+        self.checks = checks; self.ciThreads = ciThreads; self.onShowThread = onShowThread
+    }
+
+    public var body: some View {
+        Chip(help: "Checks: \(checks.passed) passed, \(checks.failed) failed, \(checks.running) running") { open.toggle() } label: {
+            CheckRing(checks: checks)
+            Text(checks.label).monospacedDigit().foregroundStyle(checks.failed > 0 ? Color.red : Color.primary)
+        }
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            ChecksList(checks: checks, ciThreads: ciThreads, onShowThread: { id in open = false; onShowThread?(id) })
+        }
+    }
+}
+
+/// Every check: its state, its log, and for a failure CI left on a line, that line.
+struct ChecksList: View {
+    let checks: ReviewContext.Checks
+    let ciThreads: [String: String]
+    let onShowThread: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                CheckRing(checks: checks)
+                Text("Checks").font(.headline)
+                Text("\(checks.passed) passed · \(checks.failed) failed · \(checks.running) running").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if let u = checks.url { Button("All on GitHub") { Navigator.go(.web(u)) }.buttonStyle(.link).font(.caption) }
+            }
+            .padding(12)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(checks.items) { item in
+                        HStack(spacing: 8) {
+                            icon(item.state)
+                            Text(item.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 12)
+                            if item.state == .failed, let thread = ciThreads[item.name] {
+                                Button("Show in diff") { onShowThread(thread) }.buttonStyle(.link).font(.caption)
+                            }
+                            if let u = item.url { Button("Log") { Navigator.go(.web(u)) }.buttonStyle(.link).font(.caption) }
+                        }
+                        .font(.callout)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
+                }
+            }
+            .frame(maxHeight: 360)
+        }
+        .frame(width: 420)
+    }
+
+    @ViewBuilder private func icon(_ s: ReviewContext.Checks.State) -> some View {
+        switch s {
+        case .failed: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        case .running: ProgressView().controlSize(.small).frame(width: 14, height: 14)
+        case .passed: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .skipped: Image(systemName: "minus.circle").foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -120,7 +209,7 @@ public extension ReviewContext.AgentState {
 }
 
 /// A capsule link: highlights on hover, shows the hand.
-private struct Chip<Content: View>: View {
+struct Chip<Content: View>: View {
     let help: String
     let action: () -> Void
     @ViewBuilder let label: Content
