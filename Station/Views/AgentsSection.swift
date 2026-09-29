@@ -32,6 +32,9 @@ struct AgentsSection: View {
             if needs > 0 { Text("\(needs) need\(needs == 1 ? "s" : "") you").font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange) }
             if working > 0 { Text("\(working) working").font(.system(size: 11)).foregroundStyle(.secondary) }
             Spacer()
+            Button("Show All") { AgentsWindow.show() }
+                .buttonStyle(.borderless).font(.system(size: 11))
+                .help("Every session, live and past (⇧⌘A)")
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 2)

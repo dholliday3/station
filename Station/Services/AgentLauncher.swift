@@ -451,6 +451,12 @@ enum AgentLauncher {
         return file
     }
 
+    /// Run `command` in `directory`, in your terminal (Settings → Agent → Terminal).
+    static func runInTerminal(_ command: String, directory: String, title: String) async throws {
+        let t = Terminal(rawValue: AppModel.shared.prefs.terminal) ?? .terminal
+        try await openTerminal(t, command: command, directory: directory, title: title, key: "run-\(UUID().uuidString.prefix(8))")
+    }
+
     private static func openTerminal(_ t: Terminal, command: String, directory: String, title: String, key: String) async throws {
         // Only the agent command goes in the script; `cd` is handled there too.
         let agentOnly = command.replacingOccurrences(of: "cd \(shq(directory)) && ", with: "").replacingOccurrences(of: "cd \(shq(directory))", with: "")
