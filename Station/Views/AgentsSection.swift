@@ -5,6 +5,8 @@ import SwiftUI
 struct AgentsSection: View {
     private var board: AgentBoard { .shared }
     @AppStorage("agentsOfferDismissed") private var offerDismissed = false
+    /// Folded to its header (counts stay visible); remembered.
+    @AppStorage("agentsCollapsed") private var collapsed = false
 
     private static var claudeInstalled: Bool {
         FileManager.default.fileExists(atPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude").path)
@@ -16,7 +18,10 @@ struct AgentsSection: View {
         } else if !board.agents.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 header
-                ForEach(board.agents) { AgentRow(agent: $0, branch: board.branches[$0.cwd]) }
+                if !collapsed {
+                    ForEach(board.agents) { AgentRow(agent: $0, branch: board.branches[$0.cwd]) }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             .padding(.horizontal, 8)
             .padding(.top, 8)
@@ -28,7 +33,21 @@ struct AgentsSection: View {
     private var header: some View {
         let needs = board.needsYou, working = board.agents.filter { $0.state == .working }.count
         return HStack(spacing: 6) {
-            Text("Agents").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { collapsed.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    Text("Agents").font(.system(size: 11, weight: .semibold))
+                    if collapsed { Text("\(board.agents.count)").font(.system(size: 11)).monospacedDigit() }
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(collapsed ? "Show agents" : "Hide agents")
             if needs > 0 { Text("\(needs) need\(needs == 1 ? "s" : "") you").font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange) }
             if working > 0 { Text("\(working) working").font(.system(size: 11)).foregroundStyle(.secondary) }
             Spacer()
