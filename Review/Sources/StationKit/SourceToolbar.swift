@@ -122,7 +122,7 @@ final class SourceToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate {
 
     func refreshTitles() {
         let name = (repoPath as NSString).lastPathComponent
-        let branch = (try? listWorktrees(repoRoot: repoPath))?.first { $0.isCurrent }?.branch
+        let branch = review?.checkedOutBranch // from the review's last load: no git on the main thread
         setTitle(projectButton, symbol: "folder", title: branch.map { "\(name)  ·  \($0)" } ?? name)
 
         let title: String

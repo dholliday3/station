@@ -27,13 +27,13 @@ cp ~/.claude/settings.json "$SCRATCH/claude-settings.json" 2>/dev/null || echo '
 # (your other agents are running while this measures): a gate that flakes gets skipped.
 # perf/history.tsv catches slow drift under budget. Never loosen one to make a release pass.
 # launch_to_window, launch_to_review and main_stall_max are new (1.2.0) and sit at today's
-# numbers: a ratchet. main_stall_max is launch itself (the review still loads on the main thread
-# after the window draws, 0.95-1.4s). Loading it off the main thread brings these down: tighten then.
+# numbers: a ratchet. The review now loads off the main thread (1.3.0); the longest stall left is
+# building the window (~300ms) and laying out the diff's files (~250ms). Tighten as those shrink.
 typeset -A BUDGET=(
   launch_to_start_ms     400
-  launch_to_window_ms   1300
-  launch_to_review_ms   1900
-  main_stall_max_ms     1500
+  launch_to_window_ms    800
+  launch_to_review_ms   1500
+  main_stall_max_ms      700
   first_window_ms        200
   tab_agents_first_ms    300
   tab_prs_first_ms       150

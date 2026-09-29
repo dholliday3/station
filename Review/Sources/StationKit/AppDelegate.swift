@@ -69,8 +69,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         c.window?.present()
         PerfMark.mark("shown")
         c.start()
-        PerfMark.mark("started")
-        DispatchQueue.main.async { PerfMark.mark("first-runloop") }
     }
 
     /// No repo and nothing recent: ask for one.

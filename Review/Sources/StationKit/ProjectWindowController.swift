@@ -94,8 +94,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         reviewView.showLoading("Loading changes…")
         window?.displayIfNeeded()
         PerfMark.mark("window-drawn")
-        reviewView.reload()
-        reviewView.hideLoading()
+        reviewView.reload { [weak self] in
+            self?.reviewView.hideLoading()
+            PerfMark.mark("started")
+        }
     }
 
     /// The tab's label: "hexyl · PR #149", "servicepro · feat/x".
@@ -105,7 +107,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         switch reviewView.base?.mode {
         case .pullRequest?: detail = reviewView.base?.title
         case .commit?: detail = reviewView.base?.title.map { "commit " + ($0.split(separator: " ").first.map(String.init) ?? $0) }
-        default: detail = (try? listWorktrees(repoRoot: repoPath))?.first { $0.isCurrent }?.branch
+        default: detail = reviewView.checkedOutBranch
         }
         window?.title = detail.map { "\(name) · \($0)" } ?? name
     }

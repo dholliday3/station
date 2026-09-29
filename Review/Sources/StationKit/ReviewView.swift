@@ -207,42 +207,63 @@ final class ReviewView: NSView, NSPopoverDelegate {
         center(statusLabel, x: left)
     }
 
-    func reload() {
+    /// Bumped by each reload: a slower, older load that finishes late is dropped.
+    private var loadGeneration = 0
+    /// The branch's upstream commit, from the last load (CI comments follow it).
+    private var upstreamSha: String?
+    /// The branch checked out here, from the last load (the toolbar and tab title show it).
+    private(set) var checkedOutBranch: String?
+
+    /// Load the review: git work (base, diff, upstream) off the main thread, then the views.
+    /// The window stays responsive throughout; `done` runs once it's on screen.
+    func reload(done: (() -> Void)? = nil) {
         let start = CACurrentMediaTime()
-        do {
-            publishChoice() // the core reads the repo's saved choice
-            PerfMark.mark("r.publish")
-            let base = try reviewBase(repoRoot: repoPath)
-            PerfMark.mark("r.base")
-            self.base = base
-            document.baseRev = base.rev
-            document.readOnly = base.target != nil // a commit or PR isn't on disk: nothing to edit
-            document.prNumber = base.mode == .pullRequest ? choice.pr.map(Int.init) : nil
-            document.viewScope = StationKit.viewScope(repoRoot: repoPath)
-            updatePRIsMine(pr: base.mode == .pullRequest ? choice.pr.flatMap { GitHub.cached(repo: repoPath, number: Int($0)) } : nil)
-            let pr = base.mode == .pullRequest ? choice.pr.flatMap { GitHub.cached(repo: repoPath, number: Int($0)) } : nil
-            prBar.set(pr)
-            prBar.isHidden = pr == nil
-            prBar.setReadOnly(pr != nil && base.target != nil)
-            needsLayout = true
-            PerfMark.mark("r.prbar")
-            let raw = try loadReview(repoRoot: repoPath, baseRev: base.rev, target: base.target)
-            PerfMark.mark("r.loadReview")
-            let files = TreeOrder.sorted(raw.map(ReviewFile.init))
-            PerfMark.mark("r.reviewFiles")
-            document.setFiles(files)
-            PerfMark.mark("r.setFiles")
-            onBaseChanged?(base)
-            PerfMark.mark("r.baseChanged")
-            refreshGit()
-            refreshMerge()
-            syncCI()
-            syncGitHub()
-            PerfMark.mark("r.syncs")
-        } catch {
-            statusLabel.stringValue = "Error: \(error)"
-            return
+        publishChoice() // the core reads the repo's saved choice
+        loadGeneration += 1
+        let generation = loadGeneration, repo = repoPath
+        PerfMark.mark("r.publish")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let loaded = Result { () -> (ReviewBase, [FileDiff], ReviewScope, String?, String?) in
+                let base = try reviewBase(repoRoot: repo)
+                let raw = try loadReview(repoRoot: repo, baseRev: base.rev, target: base.target)
+                let branch = (try? listWorktrees(repoRoot: repo))?.first { $0.isCurrent }?.branch
+                return (base, raw, viewScope(repoRoot: repo), Self.upstream(of: repo), branch)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.loadGeneration else { return }
+                PerfMark.mark("r.loaded")
+                switch loaded {
+                case let .success((base, raw, scope, upstream, branch)):
+                    self.upstreamSha = upstream
+                    self.checkedOutBranch = branch
+                    self.apply(base: base, raw: raw, scope: scope, started: start)
+                case let .failure(error):
+                    self.statusLabel.stringValue = "Error: \(error)"
+                }
+                done?()
+            }
         }
+    }
+
+    private func apply(base: ReviewBase, raw: [FileDiff], scope: ReviewScope, started start: CFTimeInterval) {
+        self.base = base
+        document.baseRev = base.rev
+        document.readOnly = base.target != nil // a commit or PR isn't on disk: nothing to edit
+        document.prNumber = base.mode == .pullRequest ? choice.pr.map(Int.init) : nil
+        document.viewScope = scope
+        let pr = base.mode == .pullRequest ? choice.pr.flatMap { GitHub.cached(repo: repoPath, number: Int($0)) } : nil
+        updatePRIsMine(pr: pr)
+        prBar.set(pr)
+        prBar.isHidden = pr == nil
+        prBar.setReadOnly(pr != nil && base.target != nil)
+        needsLayout = true
+        document.setFiles(TreeOrder.sorted(raw.map(ReviewFile.init)))
+        PerfMark.mark("r.setFiles")
+        onBaseChanged?(base)
+        refreshGit()
+        refreshMerge()
+        syncCI()
+        syncGitHub()
         needsLayout = true
         layoutSubtreeIfNeeded()
         PerfMark.mark("r.layout")
@@ -256,16 +277,28 @@ final class ReviewView: NSView, NSPopoverDelegate {
             s.send(thread: thread.id, message: AgentSession.commentPrompt(thread: thread, path: f.path, line: line, text: f.newText as String))
             return true
         }
-        PerfMark.mark("r.agents")
         startSession() // primed by the time you have a question
         runAutoReviewers()
-        PerfMark.mark("r.session")
         document.onFilesReplaced = { [weak self] files in self?.onLoad?(files); self?.updateStatus(); self?.updateEmpty() }
         updateEmpty()
         document.watchWorkingTree()
         updateStatus()
         SelfTest.run(review: self)
         Demo.run(review: self)
+    }
+
+    /// `@{u}`'s commit, or nil (no upstream). Off the main thread: it runs git.
+    nonisolated private static func upstream(of repo: String) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        p.arguments = ["git", "-C", repo, "rev-parse", "--verify", "-q", "@{u}"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }
+        p.waitUntilExit()
+        let sha = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return p.terminationStatus == 0 && !sha.isEmpty ? sha : nil
     }
 
     private func updateStatus() {
@@ -558,8 +591,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
                     self.choice.baseBranch = "origin/" + pr.baseRefName
                     self.choice.headBranch = pr.headRefName // checked out here: your own PR, editable
                     self.showLoading("Building the diff…")
-                    DispatchQueue.main.async { // let that caption draw before the (synchronous) load
-                        self.reload()
+                    self.reload {
                         self.hideLoading()
                         done(nil)
                     }
@@ -611,16 +643,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     private func ciCommit() -> String? {
         if base?.mode == .pullRequest, let head = base?.target { return head } // on disk (your own PR): as pushed, below
         if base?.mode == .commit { return nil }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        p.arguments = ["git", "-C", repoPath, "rev-parse", "--verify", "-q", "@{u}"]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        p.waitUntilExit()
-        let sha = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return p.terminationStatus == 0 && !sha.isEmpty ? sha : nil
+        return upstreamSha
     }
 
     /// Switch the repo to `branch`, then review it (a PR or commit view goes back to the branch's changes).
