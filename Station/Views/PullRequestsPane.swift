@@ -8,13 +8,9 @@ struct PullRequestsPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search pull requests", text: $model.searchText).textFieldStyle(.plain)
-                if !model.searchText.isEmpty {
-                    Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.plain)
-                }
+            HStack(alignment: .top, spacing: 10) {
+                // The panel's search: author: repo: branch: is: #123, with chips (GitHub people too).
+                SearchField(model: model).padding(.horizontal, -12).padding(.vertical, -8)
                 if let t = model.lastRefresh {
                     // Once a minute, not every second (`style: .relative` redraws even while the tab is hidden).
                     TimelineView(.everyMinute) { ctx in

@@ -326,9 +326,13 @@ struct SearchField: View {
             }
             // Completion chips: prefixes when idle, matching values once a prefix is typed. Click to insert.
             let chips = model.searchSuggestions
-            if !chips.isEmpty {
+            if !chips.isEmpty || model.peopleLoading {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
+                        if model.peopleLoading {
+                            // GitHub is looking people up: say so, don't just sit there.
+                            ProgressView().controlSize(.mini).help("Looking on GitHub…")
+                        }
                         ForEach(chips) { c in
                             Button { model.searchText = SearchQuery.complete(model.searchText, with: c.insert); focused = true } label: {
                                 Text(c.label).font(.caption2).monospaced().foregroundStyle(.secondary)

@@ -192,7 +192,7 @@ final class AppModel {
     }
 
     /// Text filter (US-032), GitHub-style: bare words, author:, repo:, branch:, is:, #n. Session-only.
-    var searchText = ""
+    var searchText = "" { didSet { if searchText != oldValue { searchTextChanged() } } }
     var isSearching = false
     /// The "watch a PR by URL" field. Opened by ⌘N or the dots' right-click menu (US-040).
     var isWatching = false
@@ -207,7 +207,43 @@ final class AppModel {
     private func matchesSearch(_ pr: PullRequest) -> Bool { searchQuery.matches(pr, searchContext) }
     /// Completion chips for the search field, drawn from what's currently loaded.
     var searchSuggestions: [SearchQuery.Suggestion] {
-        SearchQuery.suggestions(for: searchText, prs: all + mergedRows, searchContext)
+        let local = SearchQuery.suggestions(for: searchText, prs: all + mergedRows, searchContext)
+        // People GitHub found for author:<partial>, after the ones already on your PRs.
+        guard let partial = authorPartial, partial == peopleQuery else { return local }
+        let known = Set(local.map { $0.insert.lowercased() })
+        return local + people.filter { !known.contains("author:" + $0.login.lowercased()) }.map { p in
+            SearchQuery.Suggestion(label: p.name.map { "\(p.login) · \($0)" } ?? p.login, insert: "author:" + p.login)
+        }
+    }
+
+    /// author:<2+ letters> being typed: what to ask GitHub for.
+    private var authorPartial: String? {
+        guard let last = searchText.split(separator: " ", omittingEmptySubsequences: false).last?.lowercased(),
+              last.hasPrefix("author:") else { return nil }
+        let p = String(last.dropFirst(7)).trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        return p.count >= 2 ? p : nil
+    }
+    /// GitHub's answer for `peopleQuery`, and whether one is on its way (the chip row shows a spinner).
+    private(set) var people: [(login: String, name: String?)] = []
+    private(set) var peopleQuery: String?
+    private(set) var peopleLoading = false
+    @ObservationIgnored private var peopleTask: Task<Void, Never>?
+
+    /// Look people up on GitHub as you type author:… (after a 250ms pause; the latest wins).
+    func searchTextChanged() {
+        guard let partial = authorPartial, let provider else { peopleTask?.cancel(); peopleLoading = false; return }
+        guard partial != peopleQuery else { return }
+        peopleTask?.cancel()
+        peopleLoading = true
+        peopleTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let found = (try? await provider.searchUsers(partial)) ?? []
+            guard !Task.isCancelled, let self else { return }
+            self.people = found
+            self.peopleQuery = partial
+            self.peopleLoading = false
+        }
     }
 
     /// Popover status filter (US-018). Empty = show everything. Session-only, not persisted.

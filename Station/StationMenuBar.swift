@@ -61,6 +61,15 @@ enum StationMenuBar {
             }
             FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!)
         }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "peoplesearch" { // author: suggestions from GitHub
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                model.searchText = ProcessInfo.processInfo.environment["STATION_SEARCH"] ?? "author:dholl"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { FileHandle.standardError.write("[selftest] loading right after typing: \(model.peopleLoading)\n".data(using: .utf8)!) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    FileHandle.standardError.write("[selftest] loading after 3s: \(model.peopleLoading); chips: \(model.searchSuggestions.map(\.label))\n[selftest] ready\n".data(using: .utf8)!)
+                }
+            }
+        }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "nav" { // links and the way back
             let repo = ProcessInfo.processInfo.environment["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath
             let steps: [(String, () -> Void)] = [

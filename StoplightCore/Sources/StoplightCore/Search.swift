@@ -72,6 +72,7 @@ public struct SearchQuery: Equatable, Sendable {
         public let label: String     // what the chip shows
         public let insert: String    // what replaces the last token
         public var id: String { insert }
+        public init(label: String, insert: String) { self.label = label; self.insert = insert }
     }
 
     /// Chips for the current text. Empty text or a bare word → the prefixes; `author:d` → matching people; etc.

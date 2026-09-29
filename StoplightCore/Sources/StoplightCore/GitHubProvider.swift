@@ -197,6 +197,15 @@ public struct GitHubProvider: CIProvider {
     }
 
     /// Validate the token and return the login (US-001).
+    /// GitHub users matching `text` (login or name), for author: suggestions.
+    public func searchUsers(_ text: String, first: Int = 8) async throws -> [(login: String, name: String?)] {
+        let q = "query($q: String!, $n: Int!) { search(query: $q, type: USER, first: $n) { nodes { ... on User { login name } } } }"
+        let data = try await post(["query": q, "variables": ["q": text + " in:login in:name", "n": first]])
+        struct U: Decodable { let login: String?; let name: String? }
+        struct Env: Decodable { struct D: Decodable { struct S: Decodable { let nodes: [U] }; let search: S }; let data: D? }
+        return (try JSONDecoder().decode(Env.self, from: data).data?.search.nodes ?? []).compactMap { u in u.login.map { ($0, u.name) } }
+    }
+
     public func viewerLogin() async throws -> String {
         let data = try await post(["query": "{ viewer { login } }"])
         struct V: Decodable { struct D: Decodable { struct Vw: Decodable { let login: String }; let viewer: Vw }; let data: D? }
