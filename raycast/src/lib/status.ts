@@ -4,6 +4,14 @@ import { ciState, CIState, compactAgo, isUnresolvedMerge, PullRequest } from "./
 /** The PR's own light: does it need you, is it waiting on someone else, or is it good to go. */
 export type Light = "needsYou" | "waiting" | "ready" | "merged" | "quiet";
 
+export const LIGHTS: Light[] = ["needsYou", "waiting", "ready", "quiet", "merged"];
+
+export type Filter = "all" | Light;
+
+/** A fresh install has no stored filter, and the dropdown can report an empty value before it has one. */
+export const asFilter = (value: string | undefined): Filter =>
+  LIGHTS.includes(value as Light) ? (value as Light) : "all";
+
 export interface Verdict {
   light: Light;
   reasons: string[];
