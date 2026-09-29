@@ -21,6 +21,8 @@ enum StationMenuBar {
         PerfMark.mark("agentboard")
         SessionCatalog.shared.start()
         PerfMark.mark("catalog")
+        StationHost.selectAgent = { AgentsSelection.shared.id = $0 }
+        StationHost.currentAgent = { AgentsSelection.shared.id }
         // The main window's Agents and Pull Requests tabs (Review is StationKit's own).
         StationHost.makeModeView = { mode -> NSViewController in
             mode == .agents ? NSHostingController(rootView: AgentsView()) : NSHostingController(rootView: PullRequestsPane(model: model))
@@ -47,6 +49,27 @@ enum StationMenuBar {
                 }
                 if delay > 10 { FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!) }
             } }
+        }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "nav" { // links and the way back
+            let repo = ProcessInfo.processInfo.environment["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath
+            let steps: [(String, () -> Void)] = [
+                ("open project", { StationHost.go(.review(repo: repo)) }),
+                ("agents", { StationHost.go(.agents(session: nil)) }),
+                ("pull requests", { StationHost.go(.pullRequests) }),
+                ("file README.md:5", { StationHost.go(.file(repo: repo, path: "README.md", line: 5)) }),
+                ("back", { StationHost.back() }), ("back", { StationHost.back() }), ("back", { StationHost.back() }),
+                ("forward", { StationHost.forward() }),
+                ("url station://prs", { NSApp.delegate?.application?(NSApp, open: [URL(string: "station://prs")!]) }),
+            ]
+            for (i, step) in steps.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3 + Double(i) * 2) {
+                    step.1()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        FileHandle.standardError.write("[selftest] \(step.0) → \(StationHost.here.map { "\($0)" } ?? "nowhere")\n".data(using: .utf8)!)
+                        if i == steps.count - 1 { FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!) }
+                    }
+                }
+            }
         }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "modes" { // the main window's tabs, one capture each
             let env = ProcessInfo.processInfo.environment

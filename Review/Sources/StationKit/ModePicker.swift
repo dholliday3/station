@@ -14,7 +14,33 @@ struct ModePicker: View {
     @Namespace private var capsule
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private let nav = NavigationState.shared
+
     var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 2) {
+                arrow("chevron.left", enabled: nav.canGoBack, help: "Back (⌘[)") { Navigator.back() }
+                arrow("chevron.right", enabled: nav.canGoForward, help: "Forward (⌘])") { Navigator.forward() }
+            }
+            tabs
+        }
+        .fixedSize()
+    }
+
+    private func arrow(_ symbol: String, enabled: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? .secondary : .quaternary)
+        .disabled(!enabled)
+        .help(help)
+    }
+
+    private var tabs: some View {
         HStack(spacing: 2) {
             ForEach(StationMode.allCases, id: \.self) { mode in
                 let on = model.selected == mode
@@ -46,6 +72,5 @@ struct ModePicker: View {
         .background(Capsule().fill(.primary.opacity(0.05)))
         .overlay(Capsule().strokeBorder(.primary.opacity(0.08)))
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: model.selected)
-        .fixedSize()
     }
 }

@@ -1,35 +1,14 @@
 import AppKit
 
-/// station:// links, e.g. from Station:
-///   station://pr?repo=owner/name&number=123   view that PR (as a tab)
-///   station://open?path=/path/to/repo          open a project
+/// station:// links (from notifications, the CLI, other apps): Destination parses them,
+/// Navigator goes there.
 @MainActor
 enum DeepLinks {
-    /// station://pr?repo=…&number=… and station://open?path=… are reviews; station://panel… and
-    /// station://agent/… belong to the menu bar (the host handles those).
-    static func isReview(_ url: URL) -> Bool {
-        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        return (url.host == "pr" && q.contains { $0.name == "repo" }) || (url.host == "open" && q.contains { $0.name == "path" })
-    }
-
+    /// A station:// link: wherever it points (see Destination for the forms).
     static func handle(_ url: URL, app: AppDelegate) {
-        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        func value(_ name: String) -> String? { q.first { $0.name == name }?.value }
-        switch url.host {
-        case "pr":
-            guard let slug = value("repo"), let n = value("number").flatMap(Int.init) else { return }
-            guard let repo = Clones.find(slug) ?? Clones.ask(slug) else { return log("no clone for \(slug)") }
-            log("clone for \(slug): \(repo)")
-            app.viewPullRequest(n, repo: repo) { error in
-                guard let error else { return }
-                alert("Couldn't open \(slug)#\(n)", error)
-            }
-        case "open":
-            if let path = value("path"), let root = RecentProjects.repoRoot(of: path) { app.openProject(root) }
-        default:
-            break
-        }
-        NSApp.activateUnlessTesting()
+        guard let destination = Destination(url: url) else { return log("not a Station link: \(url)") }
+        log("go \(destination)")
+        Navigator.go(destination)
     }
 
     /// Up front, never behind another app's windows (links arrive while you're elsewhere).

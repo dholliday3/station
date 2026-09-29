@@ -23,6 +23,10 @@ public enum StationHost {
     /// The window `show(_:)` switches.
     @MainActor public static var frontWindow: NSWindow? { (NSApp.delegate as? AppDelegate)?.front?.window }
 
+    /// The Agents tab's selection: the host shows that session / reports the one shown.
+    @MainActor public static var selectAgent: ((String) -> Void)?
+    @MainActor public static var currentAgent: (() -> String?)?
+
     /// Switch the front window to `mode`. False if there's no window to switch.
     @MainActor @discardableResult public static func show(_ mode: StationMode) -> Bool {
         guard let c = (NSApp.delegate as? AppDelegate)?.front else { return false }
@@ -44,10 +48,14 @@ public enum StationHost {
 
     /// Open the git repo containing `path` as a review tab (its changes, ready for comments).
     @MainActor public static func openProject(_ path: String) {
-        guard let app = NSApp.delegate as? AppDelegate, let root = RecentProjects.repoRoot(of: path) else { return }
-        app.openProject(root)
-        NSApp.activateUnlessTesting()
+        Navigator.go(.review(repo: path))
     }
+
+    /// Go anywhere (the host's links: agents, PRs, files, commits).
+    @MainActor public static func go(_ destination: Destination) { Navigator.go(destination) }
+    @MainActor public static var here: Destination? { Navigator.here() }
+    @MainActor public static func back() { Navigator.back() }
+    @MainActor public static func forward() { Navigator.forward() }
 
     // MARK: Moving from Onramp (Station's migration uses these)
 
@@ -67,12 +75,7 @@ public enum StationHost {
 
     /// Open pull request `number` of `repo` ("owner/name") in a review tab, finding the local clone.
     @MainActor public static func openPullRequest(repo: String, number: Int) {
-        guard let app = NSApp.delegate as? AppDelegate else { return }
-        var c = URLComponents()
-        c.scheme = "station"
-        c.host = "pr"
-        c.queryItems = [URLQueryItem(name: "repo", value: repo), URLQueryItem(name: "number", value: String(number))]
-        if let url = c.url { DeepLinks.handle(url, app: app) }
+        Navigator.go(.pullRequest(repo: repo, number: number))
     }
 
     /// Your agents per project, replies waiting on you, Open Recent and Hide Dock Icon: the menu

@@ -213,6 +213,30 @@ final class ReviewView: NSView, NSPopoverDelegate {
     private var upstreamSha: String?
     /// The branch checked out here, from the last load (the toolbar and tab title show it).
     private(set) var checkedOutBranch: String?
+    /// A load is under way; `whenLoaded` work waits for it.
+    private var loading = false
+    private var afterLoad: [(ReviewView) -> Void] = []
+
+    /// Run `work` once the review on its way is on screen (now, if none is loading). Links to a
+    /// file or a comment use this: the project may have only just opened.
+    func whenLoaded(_ work: @escaping (ReviewView) -> Void) {
+        if loading { afterLoad.append(work) } else { work(self) }
+    }
+
+    /// Scroll to `path` (at `line`, 1-based), unfolding it; say so if this diff doesn't have it.
+    func reveal(path: String, line: Int?) {
+        if !document.reveal(path: path, line: line) {
+            notice.show("\((path as NSString).lastPathComponent) has no changes in this diff.")
+        }
+    }
+
+    /// Scroll to a comment thread and flash it.
+    func reveal(thread id: String) {
+        guard let t = document.thread(id: id) else {
+            return notice.show("That comment isn't on this diff.")
+        }
+        document.scrollToThread(t)
+    }
 
     /// Load the review: git work (base, diff, upstream) off the main thread, then the views.
     /// The window stays responsive throughout; `done` runs once it's on screen.
@@ -220,6 +244,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
         let start = CACurrentMediaTime()
         publishChoice() // the core reads the repo's saved choice
         loadGeneration += 1
+        loading = true
         let generation = loadGeneration, repo = repoPath
         PerfMark.mark("r.publish")
         DispatchQueue.global(qos: .userInitiated).async {
@@ -241,6 +266,10 @@ final class ReviewView: NSView, NSPopoverDelegate {
                     self.statusLabel.stringValue = "Error: \(error)"
                 }
                 done?()
+                self.loading = false
+                let waiting = self.afterLoad
+                self.afterLoad = []
+                waiting.forEach { $0(self) }
             }
         }
     }
@@ -1101,6 +1130,8 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     /// Comment boxes on or near screen: "t:<thread id>" or "c:<file index>" (composer).
     private var commentViews: [String: NSView] = [:]
     private var allThreads: [Thread] = []
+    /// A thread on this diff, by id.
+    func thread(id: String) -> Thread? { allThreads.first { $0.id == id } }
     private var commentsWatcher: DispatchSourceFileSystemObject?
     private let hover = HoverOverlay()
     let stickyHeader = StickyHeaderView()
@@ -1402,6 +1433,16 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     private func contentHeight(_ viewportHeight: CGFloat) -> CGFloat {
         guard !files.isEmpty else { return viewportHeight }
         return max(tops.last ?? 0, tops[files.count - 1] + viewportHeight)
+    }
+
+    /// Bring `path` into view, at `line` (1-based) if given. False: it isn't in this diff.
+    func reveal(path: String, line: Int?) -> Bool {
+        guard let i = files.firstIndex(where: { $0.path == path }) else { return false }
+        if let line { follow(file: i, line: max(0, line - 1)) } else {
+            if files[i].collapsed { setCollapsed(i, false) }
+            scrollToFile(i)
+        }
+        return true
     }
 
     func scrollToFile(_ i: Int) {

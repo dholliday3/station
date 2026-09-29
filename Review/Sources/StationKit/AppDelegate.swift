@@ -125,12 +125,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleOpen(_ url: URL) {
-        if url.scheme == "station", DeepLinks.isReview(url) { return DeepLinks.handle(url, app: self) }
+        if let destination = Destination(url: url) { return Navigator.go(destination) }
         if !url.isFileURL, let host = StationHost.openURL { return host(url) }
         if let root = RecentProjects.repoRoot(of: url.path) { open(tabFor: root) }
     }
 
     func openProject(_ root: String) { open(tabFor: root) }
+
+    /// A window to show a tab in: the front one, else the last project reopened (nil: none yet).
+    func windowForNavigation() -> ProjectWindowController? {
+        if let front { return front }
+        guard let repo = initialRepo ?? RecentProjects.list.first(where: { RecentProjects.repoRoot(of: $0) != nil }) else {
+            chooseFirstProject()
+            return nil
+        }
+        open(tabFor: repo)
+        return front
+    }
 
     /// Every open tab's review (the menu bar reads agent runs from these).
     var openReviews: [ReviewView] { controllers.map(\.review) }
@@ -200,6 +211,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func openPullRequest(_ sender: Any?) { front?.openPullRequest(sender) }
     @objc func showComments(_ sender: Any?) { front?.showComments(sender) }
     @objc func showAgents(_ sender: Any?) { front?.showAgents(sender) }
+    @objc func goBack(_ sender: Any?) { Navigator.back() }
+    @objc func goForward(_ sender: Any?) { Navigator.forward() }
     @objc func showPullRequestsMode(_ sender: Any?) { front?.showPullRequestsMode(sender) }
     @objc func showReview(_ sender: Any?) { front?.showReview(sender) }
     @objc func showPullRequests(_ sender: Any?) { front?.showPullRequests(sender) }
@@ -419,6 +432,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         viewMenu.addItem(withTitle: "Agents", action: #selector(showAgents(_:)), keyEquivalent: "1")
         viewMenu.addItem(withTitle: "Pull Requests", action: #selector(showPullRequestsMode(_:)), keyEquivalent: "2")
         viewMenu.addItem(withTitle: "Review", action: #selector(showReview(_:)), keyEquivalent: "3")
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(withTitle: "Back", action: #selector(goBack(_:)), keyEquivalent: "[")
+        viewMenu.addItem(withTitle: "Forward", action: #selector(goForward(_:)), keyEquivalent: "]")
         viewMenu.addItem(.separator())
         let c1 = viewMenu.addItem(withTitle: "Comments", action: #selector(showComments(_:)), keyEquivalent: "1")
         c1.keyEquivalentModifierMask = [.option, .command]

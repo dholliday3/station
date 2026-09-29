@@ -52,7 +52,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onToggleFiles = { [weak self] in self?.reviewSplit?.toggleSidebar(nil) }
         toolbar.onOpenContext = { [weak self] in self?.openContext(nil) }
         toolbar.onOpenPullRequest = { [weak self] in self?.openPullRequest(nil) }
-        toolbar.onMode = { [weak self] m in self?.setMode(m) }
+        toolbar.onMode = { [weak self] m in self?.go(m) }
         toolbar.onViewPullRequest = { [weak self] n in
             guard let self else { return }
             (NSApp.delegate as? AppDelegate)?.viewPullRequest(n, repo: self.repoPath) { _ in }
@@ -178,9 +178,26 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         return v
     }
 
-    @objc func showAgents(_ sender: Any?) { setMode(.agents) }
-    @objc func showPullRequestsMode(_ sender: Any?) { setMode(.pullRequests) }
-    @objc func showReview(_ sender: Any?) { setMode(.review) }
+    @objc func showAgents(_ sender: Any?) { go(.agents) }
+    @objc func showPullRequestsMode(_ sender: Any?) { go(.pullRequests) }
+    @objc func showReview(_ sender: Any?) { go(.review) }
+
+    /// Switch tabs as a step you can go back from (⌘[).
+    func go(_ m: StationMode) {
+        switch m {
+        case .agents: Navigator.go(.agents(session: StationHost.currentAgent?()))
+        case .pullRequests: Navigator.go(.pullRequests)
+        case .review: Navigator.go(location(inReview: true))
+        }
+    }
+
+    /// This window's review as a destination (what it shows now).
+    func location(inReview: Bool) -> Destination {
+        let c = review.choice
+        if c.mode == .pullRequest, let n = c.pr { return .pullRequest(repo: repoPath, number: Int(n)) }
+        if c.mode == .commit, let sha = c.commit { return .commit(repo: repoPath, sha: sha) }
+        return .review(repo: repoPath)
+    }
 
     private func makeSplit() -> NSSplitViewController {
         let split = NSSplitViewController()

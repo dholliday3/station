@@ -96,7 +96,9 @@ struct AgentSession: Identifiable, Equatable {
 }
 
 struct AgentsView: View {
-    @State private var selection: String?
+    /// Shared, so links (Navigator: station://agents/<id>) can pick the session shown.
+    @Bindable private var picked = AgentsSelection.shared
+    private var selection: String? { get { picked.id } nonmutating set { picked.id = newValue } }
     @State private var search = ""
     @AppStorage("agents.showBackground") private var showBackground = false
     private var board: AgentBoard { .shared }
@@ -118,7 +120,7 @@ struct AgentsView: View {
                 header(list)
                 if !board.installed { offer }
                 Divider()
-                List(selection: $selection) {
+                List(selection: $picked.id) {
                     ForEach(AgentSession.Status.allCases, id: \.self) { status in
                         let rows = list.filter { $0.status == status }
                         if !rows.isEmpty {
@@ -255,8 +257,13 @@ private struct SessionActions: View {
                 Task { try? await AgentLauncher.runInTerminal("claude --resume \(session.id)", directory: session.cwd, title: "Resume · \(session.project)") }
             }
         }
-        if !session.cwd.isEmpty { Button("Review Its Changes") { StationHost.openProject(session.cwd) } }
-        if let pr = session.info?.pr { Button("Open PR #\(pr.number)") { NSWorkspace.shared.open(pr.url) } }
+        if !session.cwd.isEmpty { Button("Review Its Changes") { StationHost.go(.review(repo: session.cwd)) } }
+        if let pr = session.info?.pr {
+            Button("Review PR #\(pr.number)") {
+                if NSEvent.modifierFlags.contains(.option) { NSWorkspace.shared.open(pr.url) } else { StationHost.go(.pullRequest(repo: pr.repo, number: pr.number)) }
+            }
+            .help("Its diff in Station (⌥-click: on GitHub)")
+        }
         Button("Copy Session ID") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(session.id, forType: .string) }
     }
 }
@@ -313,4 +320,12 @@ private struct SessionDetail: View {
             Text(text).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         }
     }
+}
+
+/// Which session the Agents tab shows. Links set it; the tab's list follows.
+@MainActor
+@Observable
+final class AgentsSelection {
+    static let shared = AgentsSelection()
+    var id: String?
 }
