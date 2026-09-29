@@ -20,6 +20,7 @@ enum StationMenuBar {
         AgentBoard.shared.start()
         PerfMark.mark("agentboard")
         SessionCatalog.shared.start()
+        ReviewContextProvider.start()
         PerfMark.mark("catalog")
         StationHost.selectAgent = { AgentsSelection.shared.id = $0 }
         StationHost.currentAgent = { AgentsSelection.shared.id }

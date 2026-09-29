@@ -23,6 +23,10 @@ public enum StationHost {
     /// The window `show(_:)` switches.
     @MainActor public static var frontWindow: NSWindow? { (NSApp.delegate as? AppDelegate)?.front?.window }
 
+    /// What's around a review, for its context bar: (repo path, "owner/name", branch, PR number).
+    /// Post `.stationContextChanged` when any of it changes.
+    @MainActor public static var reviewContext: ((String, String?, String?, Int?) -> ReviewContext)?
+
     /// The Agents tab's selection: the host shows that session / reports the one shown.
     @MainActor public static var selectAgent: ((String) -> Void)?
     @MainActor public static var currentAgent: (() -> String?)?

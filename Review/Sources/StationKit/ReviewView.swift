@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The endless scroll: every changed file in one scroll view.
 final class ReviewView: NSView, NSPopoverDelegate {
@@ -8,6 +9,12 @@ final class ReviewView: NSView, NSPopoverDelegate {
     private let statusBar = StatusBarView()
     /// Title, author and description while reviewing a pull request.
     private let prBar = PullRequestBar()
+    /// The PR, agents, CI and comments around this review, each a link (ContextBar).
+    private let contextModel = ContextBarModel()
+    private lazy var contextBar = NSHostingView(rootView: ContextBar(model: contextModel))
+    /// "owner/name", from the last load (the host matches PRs and checks with it).
+    private var repoSlug: String?
+    var onShowComments: (() -> Void)?
     private let statusLabel = NSTextField(labelWithString: "")
     private let progress = ProgressBarView()
     private let foldAllButton = NSButton()
@@ -72,6 +79,17 @@ final class ReviewView: NSView, NSPopoverDelegate {
         prBar.isHidden = true
         prBar.onToggle = { [weak self] in self?.needsLayout = true }
         addSubview(prBar)
+        addSubview(contextBar)
+        contextModel.onPR = { [weak self] pr in
+            guard let self else { return }
+            if self.contextModel.showingPR == pr.number { Navigator.go(.web(pr.url)) } else { Navigator.go(.pullRequest(repo: self.repoPath, number: pr.number)) }
+        }
+        contextModel.onAgent = { Navigator.go(.agents(session: $0)) }
+        contextModel.onChecks = { checks in if let u = checks.url { Navigator.go(.web(u)) } }
+        contextModel.onComments = { [weak self] in self?.onShowComments?() }
+        NotificationCenter.default.addObserver(forName: .stationContextChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshContext() }
+        }
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.cell?.truncatesLastVisibleLine = true
         progressLabel.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .medium)
@@ -165,9 +183,11 @@ final class ReviewView: NSView, NSPopoverDelegate {
         super.layout()
         let h = StatusBarView.height
         statusBar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: h)
-        let barHeight = prBar.isHidden ? 0 : prBar.height(max: (bounds.height - h) * 0.45)
-        prBar.frame = NSRect(x: 0, y: bounds.height - barHeight, width: bounds.width, height: barHeight)
-        scrollView.frame = NSRect(x: 0, y: h, width: bounds.width, height: bounds.height - h - barHeight)
+        let ctx = ContextBar.height
+        contextBar.frame = NSRect(x: 0, y: bounds.height - ctx, width: bounds.width, height: ctx)
+        let barHeight = prBar.isHidden ? 0 : prBar.height(max: (bounds.height - h - ctx) * 0.45)
+        prBar.frame = NSRect(x: 0, y: bounds.height - ctx - barHeight, width: bounds.width, height: barHeight)
+        scrollView.frame = NSRect(x: 0, y: h, width: bounds.width, height: bounds.height - h - ctx - barHeight)
         loadingView?.frame = scrollView.frame
         emptyView?.frame = scrollView.frame
         notice.place(in: scrollView.frame)
@@ -248,19 +268,20 @@ final class ReviewView: NSView, NSPopoverDelegate {
         let generation = loadGeneration, repo = repoPath
         PerfMark.mark("r.publish")
         DispatchQueue.global(qos: .userInitiated).async {
-            let loaded = Result { () -> (ReviewBase, [FileDiff], ReviewScope, String?, String?) in
+            let loaded = Result { () -> (ReviewBase, [FileDiff], ReviewScope, String?, String?, String?) in
                 let base = try reviewBase(repoRoot: repo)
                 let raw = try loadReview(repoRoot: repo, baseRev: base.rev, target: base.target)
                 let branch = (try? listWorktrees(repoRoot: repo))?.first { $0.isCurrent }?.branch
-                return (base, raw, viewScope(repoRoot: repo), Self.upstream(of: repo), branch)
+                return (base, raw, viewScope(repoRoot: repo), Self.upstream(of: repo), branch, Self.remoteSlug(of: repo))
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self, generation == self.loadGeneration else { return }
                 PerfMark.mark("r.loaded")
                 switch loaded {
-                case let .success((base, raw, scope, upstream, branch)):
+                case let .success((base, raw, scope, upstream, branch, slug)):
                     self.upstreamSha = upstream
                     self.checkedOutBranch = branch
+                    self.repoSlug = slug
                     self.apply(base: base, raw: raw, scope: scope, started: start)
                 case let .failure(error):
                     self.statusLabel.stringValue = "Error: \(error)"
@@ -312,8 +333,38 @@ final class ReviewView: NSView, NSPopoverDelegate {
         updateEmpty()
         document.watchWorkingTree()
         updateStatus()
+        refreshContext()
         SelfTest.run(review: self)
         Demo.run(review: self)
+    }
+
+    /// Ask the host what's around this review (PR, agents, CI) and redraw the bar.
+    func refreshContext() {
+        let pr = document.prNumber
+        let branch = base?.mode == .pullRequest ? choice.headBranch : checkedOutBranch
+        contextModel.branch = pr.map { "#\($0)" + (branch.map { " · \($0)" } ?? "") } ?? branch
+        contextModel.showingPR = pr
+        contextModel.openComments = document.openCommentCount
+        let context = StationHost.reviewContext?(repoPath, repoSlug, branch, pr) ?? ReviewContext()
+        DeepLinks.log("context \(repoSlug ?? "nil") \(branch ?? "nil") \(pr.map(String.init) ?? "nil") → pr \(context.pr?.number.description ?? "none"), checks \(context.checks?.total ?? 0), agents \(context.agents.map { "\($0.title) \($0.state)" })")
+        if context != contextModel.context { contextModel.context = context }
+    }
+
+    /// "owner/name" from the origin remote's URL (git@github.com:o/n.git, https://github.com/o/n).
+    nonisolated private static func remoteSlug(of repo: String) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        p.arguments = ["git", "-C", repo, "remote", "get-url", "origin"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }
+        p.waitUntilExit()
+        var url = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard p.terminationStatus == 0, url.contains("github") else { return nil }
+        if url.hasSuffix(".git") { url.removeLast(4) }
+        let parts = url.replacingOccurrences(of: ":", with: "/").split(separator: "/").suffix(2)
+        return parts.count == 2 ? parts.joined(separator: "/") : nil
     }
 
     /// `@{u}`'s commit, or nil (no upstream). Off the main thread: it runs git.
@@ -331,6 +382,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
     }
 
     private func updateStatus() {
+        contextModel.openComments = document.openCommentCount
         let added = document.files.reduce(0) { $0 + $1.added }
         let removed = document.files.reduce(0) { $0 + $1.removed }
         let dirty = document.dirtyCount

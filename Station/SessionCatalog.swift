@@ -27,10 +27,13 @@ final class SessionCatalog {
         /// How it was started: "cli" (a terminal), "claude-desktop", "sdk-cli" (headless: `claude -p`,
         /// scripts, Station's own review sessions).
         var entrypoint: String?
+        /// Every folder it worked in, and the files it edited (Edit/Write): what it touched.
+        var folders: [String] = []
+        var edited: [String] = []
         var isBackground: Bool { entrypoint == "sdk-cli" }
         var totalTokens: Int { inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens }
         static func == (a: Info, b: Info) -> Bool {
-            a.id == b.id && a.entrypoint == b.entrypoint && a.title == b.title && a.lastActivity == b.lastActivity && a.totalTokens == b.totalTokens && a.pr?.number == b.pr?.number && a.branch == b.branch
+            a.id == b.id && a.entrypoint == b.entrypoint && a.title == b.title && a.lastActivity == b.lastActivity && a.totalTokens == b.totalTokens && a.pr?.number == b.pr?.number && a.branch == b.branch && a.folders == b.folders && a.edited.count == b.edited.count
         }
     }
 
@@ -40,6 +43,9 @@ final class SessionCatalog {
         var offset: UInt64 = 0
         var input = 0, output = 0, cacheRead = 0, cacheWrite = 0, turns = 0
         var lastMessage: String?
+        /// Folders it worked in and files it edited, in first-seen order (optional: older caches).
+        var folders: [String]? = []
+        var edited: [String]? = []
     }
 
     private(set) var sessions: [String: Info] = [:]
@@ -101,6 +107,7 @@ final class SessionCatalog {
                 skims[file.path] = Skim(size: size, modified: modified, info: info)
                 if let t = tallies[file.path] {
                     info.inputTokens = t.input; info.outputTokens = t.output; info.cacheReadTokens = t.cacheRead; info.cacheWriteTokens = t.cacheWrite; info.turns = t.turns
+                    info.folders = t.folders ?? []; info.edited = t.edited ?? []
                 }
                 infos[info.id] = info
             }
@@ -143,7 +150,7 @@ final class SessionCatalog {
             for file in files {
                 let size = UInt64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                 var t = tallies[file.path] ?? Tally()
-                if size < t.offset { t = Tally() } // rewritten: count again
+                if size < t.offset || t.folders == nil { t = Tally() } // rewritten, or counted before 1.3 tracked files: count again
                 guard size > t.offset else { continue }
                 autoreleasepool { Self.tally(file, into: &t) } // parsed JSON is autoreleased: free it per file, not per pass
                 tallies[file.path] = t
@@ -169,6 +176,7 @@ final class SessionCatalog {
                         let id = file.deletingPathExtension().lastPathComponent
                         sessions[id]?.inputTokens = t.input; sessions[id]?.outputTokens = t.output
                         sessions[id]?.cacheReadTokens = t.cacheRead; sessions[id]?.cacheWriteTokens = t.cacheWrite; sessions[id]?.turns = t.turns
+                        sessions[id]?.folders = t.folders ?? []; sessions[id]?.edited = t.edited ?? []
                     }
                     if sessions != catalog.sessions { catalog.sessions = sessions }
                 }
@@ -244,6 +252,7 @@ final class SessionCatalog {
     }
 
     private enum Tag {
+        static let cwd = Data(#""cwd":""#.utf8)
         static let user = Data(#""type":"user""#.utf8)
         static let assistant = Data(#""type":"assistant""#.utf8)
         static let title = Data(#""type":"ai-title""#.utf8)
@@ -272,12 +281,25 @@ final class SessionCatalog {
             let whole = data[data.startIndex...end]
             t.offset += UInt64(whole.count)
             for line in whole.split(separator: 0x0A) {
+                // Where it's working: every line says; a byte search, no parsing.
+                if let r = line.firstRange(of: Tag.cwd), let end = line[r.upperBound...].firstIndex(of: 0x22),
+                   let cwd = String(data: line[r.upperBound..<end], encoding: .utf8), !(t.folders ?? []).contains(cwd), (t.folders ?? []).count < 100 {
+                    t.folders = (t.folders ?? []) + [cwd]
+                }
                 // Cheap checks first: most lines are neither replies with usage nor prompts.
                 let isReply = line.firstRange(of: Data(#""usage""#.utf8)) != nil
                 let isUser = line.firstRange(of: Data(#""type":"user""#.utf8)) != nil
                 guard isReply || isUser, let e = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
                 if e["type"] as? String == "user", prompt(e) != nil { t.turns += 1; continue }
                 guard e["type"] as? String == "assistant", let m = e["message"] as? [String: Any], let u = m["usage"] as? [String: Any] else { continue }
+                // Files it edited (each reply's tool calls, counted before the usage dedupe below).
+                for block in (m["content"] as? [[String: Any]]) ?? [] where block["type"] as? String == "tool_use" {
+                    guard ["Edit", "Write", "MultiEdit", "NotebookEdit"].contains(block["name"] as? String ?? ""),
+                          let input = block["input"] as? [String: Any],
+                          let path = (input["file_path"] ?? input["notebook_path"]) as? String,
+                          !(t.edited ?? []).contains(path), (t.edited ?? []).count < 2000 else { continue }
+                    t.edited = (t.edited ?? []) + [path]
+                }
                 let id = m["id"] as? String ?? e["requestId"] as? String
                 if let id, id == t.lastMessage { continue }
                 t.lastMessage = id
