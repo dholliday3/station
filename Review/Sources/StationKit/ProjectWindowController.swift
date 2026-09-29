@@ -97,6 +97,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         PerfMark.mark("window-drawn")
         reviewView.reload { [weak self] in
             self?.reviewView.hideLoading()
+            if let f = ProcessInfo.processInfo.environment["STATION_SELFTEST_FILTER"] { self?.sidebar.setFilterForTests(f) }
             PerfMark.mark("started")
         }
     }

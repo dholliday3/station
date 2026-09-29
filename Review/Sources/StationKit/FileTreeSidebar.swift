@@ -83,8 +83,11 @@ final class TreeNode {
 /// Drawn like the diff canvas: one view the size of the sidebar paints only the
 /// visible rows. NSOutlineView built row views when jumping far (~11ms), which
 /// made following a fast scrub stutter; this redraws ~40 rows in about 1ms.
-final class FileTreeSidebar: NSViewController {
+final class FileTreeSidebar: NSViewController, NSSearchFieldDelegate {
     private let scroll = NSScrollView()
+    /// Narrows the tree: words match the path; ext:, is:added|modified|deleted|unviewed|commented.
+    private let filterField = NSSearchField()
+    private var filter = FileFilter("")
     private let document = FlippedView()
     private let canvas = TreeCanvas()
 
@@ -113,8 +116,36 @@ final class FileTreeSidebar: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(followViewport), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         NotificationCenter.default.addObserver(self, selector: #selector(followViewport), name: NSView.frameDidChangeNotification, object: scroll.contentView)
         NotificationCenter.default.addObserver(self, selector: #selector(styleChanged), name: .styleChanged, object: nil)
-        view = scroll
+        filterField.placeholderString = "Filter files"
+        filterField.toolTip = "Words match the path · ext:swift · is:added, is:modified, is:deleted, is:unviewed, is:commented"
+        filterField.controlSize = .small
+        filterField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        filterField.delegate = self
+        filterField.sendsSearchStringImmediately = true
+        let container = NSView()
+        for v in [filterField, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; container.addSubview(v) }
+        NSLayoutConstraint.activate([
+            filterField.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 6),
+            filterField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            filterField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            scroll.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 6),
+            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        view = container
     }
+
+    func controlTextDidChange(_ obj: Notification) {
+        filter = FileFilter(filterField.stringValue)
+        rebuildRows()
+    }
+
+    /// Type to narrow the tree.
+    func focusFilter() { view.window?.makeFirstResponder(filterField) }
+
+    /// Self-tests: filter as if typed.
+    func setFilterForTests(_ text: String) { filterField.stringValue = text; controlTextDidChange(Notification(name: NSControl.textDidChangeNotification)) }
 
     func setFiles(_ newFiles: [ReviewFile]) {
         files = newFiles
@@ -127,10 +158,16 @@ final class FileTreeSidebar: NSViewController {
 
     private func rebuildRows() {
         var out: [(TreeNode, Int)] = []
+        // Filtering: only matching files, inside their folders, all open.
+        func shows(_ n: TreeNode) -> Bool {
+            if let i = n.fileIndex { return files.indices.contains(i) && filter.matches(files[i]) }
+            return n.children.contains(where: shows)
+        }
         func walk(_ n: TreeNode, _ depth: Int) {
             for c in n.children {
+                if !filter.isEmpty, !shows(c) { continue }
                 out.append((c, depth))
-                if c.fileIndex == nil, !collapsed.contains(ObjectIdentifier(c)) { walk(c, depth + 1) }
+                if c.fileIndex == nil, !filter.isEmpty || !collapsed.contains(ObjectIdentifier(c)) { walk(c, depth + 1) }
             }
         }
         walk(root, 0)
@@ -337,5 +374,40 @@ private final class TreeCanvas: NSView {
                                           attributes: [.font: nameFont, .foregroundColor: nameColor, .paragraphStyle: truncating])
             name.draw(with: NSRect(x: x, y: y + 4, width: max(0, rowRect.maxX - 12 - cw - x), height: 16), options: [.usesLineFragmentOrigin])
         }
+    }
+}
+
+/// The file tree's filter: words must all appear in the path; ext:swift; is:added, is:modified,
+/// is:deleted, is:unviewed, is:viewed, is:commented. Same prefix: any of them.
+struct FileFilter {
+    private var words: [String] = []
+    private var exts: [String] = []
+    private var states: [String] = []
+    var isEmpty: Bool { words.isEmpty && exts.isEmpty && states.isEmpty }
+
+    init(_ text: String) {
+        for t in text.lowercased().split(separator: " ").map(String.init) {
+            if t.hasPrefix("ext:"), t.count > 4 { exts.append(String(t.dropFirst(4)).trimmingCharacters(in: CharacterSet(charactersIn: "."))) }
+            else if t.hasPrefix("is:"), t.count > 3 { states.append(String(t.dropFirst(3))) }
+            else { words.append(t) }
+        }
+    }
+
+    @MainActor func matches(_ f: ReviewFile) -> Bool {
+        let path = f.path.lowercased()
+        guard words.allSatisfy(path.contains) else { return false }
+        if !exts.isEmpty, !exts.contains((path as NSString).pathExtension) { return false }
+        if !states.isEmpty, !states.contains(where: { state in
+            switch state {
+            case "added", "new": f.status == .added || f.status == .untracked
+            case "modified", "changed": f.status == .modified
+            case "deleted": f.status == .deleted
+            case "unviewed": !f.viewed
+            case "viewed": f.viewed
+            case "commented": !f.threads.isEmpty
+            default: false
+            }
+        }) { return false }
+        return true
     }
 }
