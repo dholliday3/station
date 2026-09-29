@@ -213,7 +213,8 @@ extension GitHubReviewSync {
     /// comments with the summary and verdict, pending replies after it. Local-only
     /// threads (an agent's, CI's) stay here. Returns problems worth mentioning.
     static func submit(repo: String, pr: Int, me: String, base: String, body: String, verdict: Verdict) throws -> [String] {
-        let threads = try loadThreads(repoRoot: repo).filter { threadInView(thread: $0, pr: UInt32(pr)) }
+        let view = viewScope(repoRoot: repo) // this PR: it's the review in view
+        let threads = try loadThreads(repoRoot: repo).filter { threadInView(thread: $0, view: view) }
         let sha = try GitHub.headSha(repo: repo, number: pr)
         var notes: [String] = []
         // New threads of yours, still pending.

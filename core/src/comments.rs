@@ -94,6 +94,19 @@ pub struct Thread {
     /// On a pull request's GitHub review: which PR, and GitHub's thread id once known.
     #[serde(default)]
     pub github: Option<GitHubLink>,
+    /// Where it was left: the branch, and the PR when reviewing one. It shows only there (a
+    /// comment on one PR never turns up in another). None: from before 1.3, shown everywhere.
+    #[serde(default)]
+    pub scope: Option<ReviewScope>,
+}
+
+/// A review's place: the branch it's about, and its PR if it's one.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct ReviewScope {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -388,6 +401,7 @@ pub fn load_threads(repo_root: String) -> Result<Vec<Thread>, CoreError> {
 /// `pending`: part of a review in progress (published by `submit_review`).
 pub fn add_thread(repo_root: String, path: String, text: String, line: u32, old_side: bool, author: String, body: String, pending: bool) -> Result<Thread, CoreError> {
     let anchor = make_anchor(&text, line, old_side);
+    let scope = crate::repo::view_scope(repo_root.clone());
     modify(&repo_root, |store| {
         let thread = Thread {
             id: new_id(&store.threads),
@@ -401,6 +415,7 @@ pub fn add_thread(repo_root: String, path: String, text: String, line: u32, old_
             severity: None,
             triage: None,
             github: None,
+            scope: Some(scope.clone()),
         };
         store.threads.push(thread.clone());
         Ok(thread)
@@ -648,6 +663,7 @@ pub fn sync_github_threads(repo_root: String, pr: u32, me: String, my_login: Str
                     severity: None,
                     triage: None,
                     github: Some(GitHubLink { pr, thread_id: Some(gh.thread_id.clone()) }),
+                    scope: None, // the GitHub link places it
                 });
                 sync.added += 1;
                 continue;
@@ -689,14 +705,15 @@ pub fn sync_github_threads(repo_root: String, pr: u32, me: String, my_login: Str
 
 /// Whether a thread belongs in what's on screen: a GitHub thread only on its own PR.
 #[uniffi::export]
-pub fn thread_in_view(thread: Thread, pr: Option<u32>) -> bool {
-    thread.github.map_or(true, |g| Some(g.pr) == pr)
-}
-
-/// The PR the review shows, if it's a PR.
-fn current_pr(repo_root: &str) -> Option<u32> {
-    let choice = crate::repo::review_choice(repo_root.to_string());
-    (choice.mode == crate::repo::ReviewMode::PullRequest).then_some(choice.pr).flatten()
+pub fn thread_in_view(thread: Thread, view: ReviewScope) -> bool {
+    if let Some(g) = thread.github {
+        return Some(g.pr) == view.pr;
+    }
+    match thread.scope {
+        None => true, // left before comments knew where they were
+        Some(ReviewScope { branch: None, pr: None }) => true, // left on a detached HEAD: nowhere better to put it
+        Some(s) => (s.pr.is_some() && s.pr == view.pr) || (s.branch.is_some() && s.branch == view.branch),
+    }
 }
 
 // MARK: Anchoring
@@ -781,11 +798,11 @@ fn located_all(repo_root: &str, threads: Vec<Thread>) -> Vec<LocatedThread> {
 /// Threads as JSON (with current line numbers) for agents and scripts.
 #[uniffi::export]
 pub fn export_json(repo_root: String, include_resolved: bool) -> Result<String, CoreError> {
-    let pr = current_pr(&repo_root);
+    let view = crate::repo::view_scope(repo_root.clone());
     let threads: Vec<Thread> = submitted_only(load_threads(repo_root.clone())?)
         .into_iter()
         .filter(|t| include_resolved || t.status == ThreadStatus::Open)
-        .filter(|t| thread_in_view(t.clone(), pr))
+        .filter(|t| thread_in_view(t.clone(), view.clone()))
         .collect();
     Ok(serde_json::to_string_pretty(&located_all(&repo_root, threads)).expect("serializable"))
 }
@@ -794,11 +811,11 @@ pub fn export_json(repo_root: String, include_resolved: bool) -> Result<String, 
 /// the exact command to resolve it.
 #[uniffi::export]
 pub fn export_markdown(repo_root: String, include_resolved: bool) -> Result<String, CoreError> {
-    let pr = current_pr(&repo_root);
+    let view = crate::repo::view_scope(repo_root.clone());
     let threads: Vec<Thread> = submitted_only(load_threads(repo_root.clone())?)
         .into_iter()
         .filter(|t| include_resolved || t.status == ThreadStatus::Open)
-        .filter(|t| thread_in_view(t.clone(), pr))
+        .filter(|t| thread_in_view(t.clone(), view.clone()))
         .collect();
     let located = located_all(&repo_root, threads);
     let open = located.iter().filter(|l| l.thread.status == ThreadStatus::Open).count();
@@ -1064,7 +1081,21 @@ mod tests {
         assert_eq!((all.len(), all[0].status, all[0].entries[0].body.as_str()), (1, ThreadStatus::Resolved, "rename it"));
 
         // Another PR's threads aren't in this one; one you delete stays deleted.
-        assert!(!thread_in_view(all[0].clone(), Some(8)) && thread_in_view(all[0].clone(), Some(7)) && !thread_in_view(all[0].clone(), None));
+        let pr = |n: Option<u32>| ReviewScope { branch: None, pr: n };
+        // Local comments: shown on the PR or branch they were left on, and nowhere else.
+        let at = |b: Option<&str>, n: Option<u32>| ReviewScope { branch: b.map(String::from), pr: n };
+        let mut local = all[0].clone();
+        local.github = None;
+        local.scope = Some(at(Some("feat-x"), Some(5)));
+        assert!(thread_in_view(local.clone(), at(Some("feat-x"), Some(5))));   // the same PR
+        assert!(thread_in_view(local.clone(), at(Some("feat-x"), None)));      // its branch, checked out
+        assert!(!thread_in_view(local.clone(), at(Some("feat-y"), Some(6))));  // another PR
+        assert!(!thread_in_view(local.clone(), at(Some("main"), None)));       // another branch
+        local.scope = Some(at(Some("feat-x"), None));                          // left on the branch...
+        assert!(thread_in_view(local.clone(), at(Some("feat-x"), Some(5))));   // ...shows on its PR
+        local.scope = None;                                                    // from before scopes
+        assert!(thread_in_view(local.clone(), at(Some("main"), Some(9))));
+        assert!(!thread_in_view(all[0].clone(), pr(Some(8))) && thread_in_view(all[0].clone(), pr(Some(7))) && !thread_in_view(all[0].clone(), pr(None)));
         delete_thread(root.clone(), all[0].id.clone()).unwrap();
         let s = sync_github_threads(root.clone(), 7, "Tim".into(), "tim".into(), vec![gh("T1", true, vec![c(100, "tim", "rename it")])], true).unwrap();
         assert_eq!(s.added, 0);

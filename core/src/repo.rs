@@ -79,6 +79,18 @@ pub struct ReviewBase {
     pub title: Option<String>,
 }
 
+/// Where the review is: its PR (reviewing one) and the branch it's about (the PR's branch, or
+/// the one checked out). New comments are stamped with this, and shown only where it matches.
+#[uniffi::export]
+pub fn view_scope(repo_root: String) -> crate::comments::ReviewScope {
+    let choice = review_choice(repo_root.clone());
+    if choice.mode == ReviewMode::PullRequest {
+        return crate::comments::ReviewScope { branch: choice.head_branch, pr: choice.pr };
+    }
+    let branch = git(&repo_root, &["symbolic-ref", "-q", "--short", "HEAD"]).ok().and_then(stdout);
+    crate::comments::ReviewScope { branch, pr: None }
+}
+
 fn stdout(out: std::process::Output) -> Option<String> {
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !s.is_empty()).then_some(s)

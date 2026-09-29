@@ -218,6 +218,7 @@ final class ReviewView: NSView, NSPopoverDelegate {
             document.baseRev = base.rev
             document.readOnly = base.target != nil // a commit or PR isn't on disk: nothing to edit
             document.prNumber = base.mode == .pullRequest ? choice.pr.map(Int.init) : nil
+            document.viewScope = StationKit.viewScope(repoRoot: repoPath)
             updatePRIsMine(pr: base.mode == .pullRequest ? choice.pr.flatMap { GitHub.cached(repo: repoPath, number: Int($0)) } : nil)
             let pr = base.mode == .pullRequest ? choice.pr.flatMap { GitHub.cached(repo: repoPath, number: Int($0)) } : nil
             prBar.set(pr)
@@ -1157,6 +1158,8 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
     var readOnly = false
     /// The PR on screen (its GitHub threads show; other PRs' don't). Set by ReviewView.reload.
     var prNumber: Int?
+    /// Where this review is (branch, PR): comments left elsewhere aren't shown. Set on each reload.
+    var viewScope = ReviewScope(branch: nil, pr: nil)
     /// The PR whose GitHub review your comments can go to (nil: they stay here).
     var githubPR: Int? { Style.shared.settings.githubComments ? prNumber : nil }
     /// Your own PR: comments stay here unless you tick "Post to GitHub". Set by ReviewView.
@@ -1808,8 +1811,8 @@ final class ReviewDocumentView: NSView, DiffEditorDelegate {
 
     /// Re-read comments.json (ours or an agent's changes) and place every thread.
     func reloadThreads() {
-        let pr = prNumber.map(UInt32.init)
-        allThreads = ((try? loadThreads(repoRoot: repoPath)) ?? []).filter { threadInView(thread: $0, pr: pr) }
+        let view = viewScope
+        allThreads = ((try? loadThreads(repoRoot: repoPath)) ?? []).filter { threadInView(thread: $0, view: view) }
         pendingCount = Int((try? StationKit.pendingCount(repoRoot: repoPath, author: author)) ?? 0)
         let byPath = Dictionary(grouping: allThreads, by: \.path)
         for (i, file) in files.enumerated() {
