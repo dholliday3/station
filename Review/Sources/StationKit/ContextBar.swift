@@ -155,6 +155,15 @@ struct ChecksList: View {
     let checks: ReviewContext.Checks
     let ciThreads: [String: String]
     let onShowThread: (String) -> Void
+    @State private var query = ""
+    @State private var failingOnly = false
+
+    private var shown: [ReviewContext.Checks.Item] {
+        let words = query.lowercased().split(separator: " ").map(String.init)
+        return checks.items.filter { item in
+            (!failingOnly || item.state == .failed) && words.allSatisfy { item.name.lowercased().contains($0) }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -166,10 +175,18 @@ struct ChecksList: View {
                 if let u = checks.url { Button("All on GitHub") { Navigator.go(.web(u)) }.buttonStyle(.link).font(.caption) }
             }
             .padding(12)
+            if checks.items.count > 6 {
+                HStack(spacing: 8) {
+                    TextField("Filter checks", text: $query).textFieldStyle(.roundedBorder).controlSize(.small)
+                    if checks.failed > 0 { Toggle("Failing only", isOn: $failingOnly).toggleStyle(.checkbox).controlSize(.small) }
+                }
+                .padding(.horizontal, 12).padding(.bottom, 8)
+            }
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(checks.items) { item in
+                    if shown.isEmpty { Text("No checks match.").foregroundStyle(.secondary).padding(12) }
+                    ForEach(shown) { item in
                         HStack(spacing: 8) {
                             icon(item.state)
                             Text(item.name).lineLimit(1).truncationMode(.middle)
