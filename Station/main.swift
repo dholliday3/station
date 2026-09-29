@@ -5,5 +5,9 @@ import onramp
 MainActor.assumeIsolated {
     OnrampHost.didLaunch = { StationMenuBar.start() }
     OnrampHost.openURL = { StationMenuBar.open($0) }
+    OnrampHost.showSettings = { StationSettings.show() }
+    OnrampHost.agentsChanged = { _, needsYou in
+        if AppModel.shared.reviewAgentsNeedYou != needsYou { AppModel.shared.reviewAgentsNeedYou = needsYou }
+    }
 }
 OnrampHost.main()

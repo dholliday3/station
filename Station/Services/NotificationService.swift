@@ -14,7 +14,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static var mode: NotificationMode {
-        NotificationMode(rawValue: UserDefaults.standard.string(forKey: Prefs.notifications) ?? "all") ?? .all
+        NotificationMode(rawValue: AppModel.shared.prefs.notificationMode) ?? .all
     }
 
     /// Called after the first successful fetch, not on launch (spec).

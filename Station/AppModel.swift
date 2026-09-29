@@ -30,7 +30,8 @@ final class AppModel {
         case failed(String)
     }
 
-    let prefs = UserPrefs()
+    /// Rebuilt when settings.json changes on disk (a hand edit): see `settingsFileChanged`.
+    private(set) var prefs = UserPrefs()
 
     /// Raw fetch results, unfiltered.
     private(set) var mine: [PullRequest] = []
@@ -322,6 +323,7 @@ final class AppModel {
 
     func start() {
         guard loop == nil else { return }
+        SettingsFile.shared.onChange = { [weak self] in self?.settingsFileChanged() }
         server.statusProvider = { [weak self] in self?.statusReport ?? [:] }
         server.start()
         Task { await detectAgents() }   // so Settings → Agent is right the first time it opens
@@ -767,8 +769,18 @@ final class AppModel {
             agentStatus[pr.id] = AgentStatus(state: "working", at: .now)
         }
     }
-    /// Any launched agent waiting on the user. Drives the menu bar marker (US-034).
-    var agentNeedsAttention: Bool { agentStatus.values.contains { $0.state == "attention" } }
+    /// Your review agents (the windows' side): something in a review is waiting on you.
+    var reviewAgentsNeedYou = false
+    /// settings.json changed on disk (edited by hand): take the new settings, and refetch if what
+    /// Station follows changed.
+    private func settingsFileChanged() {
+        let before = prefs
+        prefs = UserPrefs()
+        if before.sources != prefs.sources { sourcesChanged() }
+    }
+
+    /// Any launched agent waiting on the user, or a review waiting on you. Drives the menu bar marker (US-034).
+    var agentNeedsAttention: Bool { reviewAgentsNeedYou || agentStatus.values.contains { $0.state == "attention" } }
     private var lastLaunch: [String: Date] = [:]
 
     /// One button: worktree + terminal + agent with the failure as the prompt.

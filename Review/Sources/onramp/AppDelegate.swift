@@ -201,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Settings
 
     @objc func openSettings(_ sender: Any?) {
+        if let show = OnrampHost.showSettings { return show() } // Station's Settings window
         Style.shared.save() // make sure the file exists with every key
         NSWorkspace.shared.open(Style.settingsURL)
     }

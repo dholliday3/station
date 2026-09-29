@@ -42,11 +42,14 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func readMarksChanged() { if item != nil { refresh() } }
 
+    /// Station shows agents on its menu bar dots: no icon of our own.
+    private var hosted: Bool { OnrampHost.agentsChanged != nil }
+
     @objc private func settingsChanged() {
         let s = Style.shared.settings
-        s.menuBar ? show() : hide()
-        // No Dock icon only while the menu bar icon is there to come back from.
-        let policy: NSApplication.ActivationPolicy = (s.dockIcon || !s.menuBar) ? .regular : .accessory
+        hosted || s.menuBar ? show() : hide()
+        // No Dock icon only while a menu bar icon is there to come back from (Station's dots always are).
+        let policy: NSApplication.ActivationPolicy = (s.dockIcon || !(s.menuBar || hosted)) ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
             if policy == .regular { NSApp.activate(ignoringOtherApps: true) } // its menus come back in front
@@ -54,7 +57,14 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     }
 
     private func show() {
-        guard item == nil else { return }
+        guard item == nil, timer == nil else { return }
+        if hosted { // keep watching; the host draws it
+            refresh()
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                Task { @MainActor in MenuBarItem.shared.refresh() }
+            }
+            return
+        }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = Self.icon(working: false, dot: false)
         item.button?.toolTip = "Onramp"
@@ -123,8 +133,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     }
 
     private func redrawIcon() {
-        guard let button = item?.button else { return }
         let working = projects.contains(where: \.isWorking), dot = projects.contains(where: \.needsYou)
+        if let report = OnrampHost.agentsChanged { return report(working, dot) }
+        guard let button = item?.button else { return }
         button.image = Self.icon(working: working, dot: dot)
         let waiting = projects.reduce(0) { $0 + $1.waiting }
         button.toolTip = working ? "Onramp: an agent is working" : waiting > 0 ? "Onramp: \(waiting) waiting on you" : "Onramp"
@@ -134,6 +145,21 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        addAgentItems(to: menu)
+        menu.addItem(.separator())
+        let updates = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updates.target = self
+        let hide = menu.addItem(withTitle: "Hide Menu Bar Icon", action: #selector(hideIcon), keyEquivalent: "")
+        hide.target = self
+        hide.toolTip = "Show it again from View → Show Agents in Menu Bar (the Dock icon comes back if it was hidden)"
+        menu.addItem(.separator())
+        let quit = menu.addItem(withTitle: "Quit Onramp", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = NSApp
+    }
+
+    /// Agents per project, replies waiting, Mark All as Read, Open Recent and Hide Dock Icon.
+    func addAgentItems(to menu: NSMenu) {
+        refresh() // fresh for next time; this uses the last scan (at most 3 s old)
         let active = projects.filter { !$0.isEmpty }
         if active.isEmpty {
             let quiet = menu.addItem(withTitle: "No agents working", action: nil, keyEquivalent: "")
@@ -174,19 +200,10 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         }
         recent.submenu = sub
         recent.isEnabled = !sub.items.isEmpty
-        menu.addItem(.separator())
-        let updates = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
-        updates.target = self
         let dock = menu.addItem(withTitle: "Hide Dock Icon", action: #selector(toggleDock), keyEquivalent: "")
         dock.target = self
         dock.state = Style.shared.settings.dockIcon ? .off : .on
-        dock.toolTip = "Onramp lives in the menu bar only. While the Dock icon is hidden, open windows from here; the app menus (File, Edit…) aren't shown."
-        let hide = menu.addItem(withTitle: "Hide Menu Bar Icon", action: #selector(hideIcon), keyEquivalent: "")
-        hide.target = self
-        hide.toolTip = "Show it again from View → Show Agents in Menu Bar (the Dock icon comes back if it was hidden)"
-        menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit Onramp", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.target = NSApp
+        dock.toolTip = "Menu bar only. While the Dock icon is hidden, open windows from here; the app menus (File, Edit…) aren't shown."
     }
 
     /// Finished reviews from before this are seen (Mark All as Read).

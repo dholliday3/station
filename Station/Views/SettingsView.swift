@@ -18,6 +18,8 @@ struct SettingsView: View {
                 .tabItem { Label("Notifications", systemImage: "bell") }
             AgentSettingsTab(model: model)
                 .tabItem { Label("Agent", systemImage: "cpu") }
+            ReviewSettingsTab()
+                .tabItem { Label("Review", systemImage: "text.alignleft") }
         }
         .frame(minWidth: 520, idealWidth: 560, minHeight: 480, idealHeight: 680)
     }

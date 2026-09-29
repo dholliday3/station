@@ -1,4 +1,5 @@
 import AppKit
+import onramp
 import OSLog
 import ServiceManagement
 import SwiftUI
@@ -126,6 +127,10 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
             return item
         }
 
+        // Your review agents and projects (what Onramp's own menu bar icon used to show).
+        OnrampHost.addAgentItems(to: menu)
+        for item in menu.items where item.image == nil && !item.isSeparatorItem { item.image = NSImage(size: NSSize(width: 16, height: 16)) } // keep the icon column even
+        menu.addItem(.separator())
         _ = add("Refresh Now", "arrow.clockwise", #selector(refreshNow), key: "r")
         _ = add("Watch a PR by URL…", "eye", #selector(watchPR), key: "n")
 

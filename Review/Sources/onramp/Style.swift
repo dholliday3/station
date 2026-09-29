@@ -114,7 +114,13 @@ final class Style {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(settings) { try? data.write(to: Self.settingsURL, options: .atomic) }
+        // Merge, never replace: Station keeps its menu bar settings in the same file.
+        guard let mine = (try? encoder.encode(settings)).flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) else { return }
+        var all = (try? Data(contentsOf: Self.settingsURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        all.merge(mine) { _, new in new }
+        if let data = try? JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: Self.settingsURL, options: .atomic)
+        }
     }
 
     /// Re-read settings.json and themes/ when they change on disk.

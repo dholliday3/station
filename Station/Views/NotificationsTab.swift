@@ -4,7 +4,6 @@ import StoplightCore
 /// When Stoplight speaks up: CI changes, plus reviews and comments, minus the people and bots you mute.
 struct NotificationsTab: View {
     @Bindable var model: AppModel
-    @AppStorage(Prefs.notifications) private var notifications = "all"
     @State private var draft = ""
     @State private var adding = false
     @State private var problem: String?
@@ -14,7 +13,7 @@ struct NotificationsTab: View {
         @Bindable var prefs = model.prefs
         Form {
             Section("Checks") {
-                Picker(selection: $notifications) {
+                Picker(selection: $prefs.notificationMode) {
                     Text("When a PR fails or turns all-passing").tag("all")
                     Text("Only when a PR fails").tag("failOnly")
                     Text("Never").tag("off")
@@ -40,10 +39,10 @@ struct NotificationsTab: View {
             } header: {
                 Text("Reviews and comments")
             } footer: {
-                Text(notifications == "off" ? "Notifications are off above, so these are too."
+                Text(prefs.notificationMode == "off" ? "Notifications are off above, so these are too."
                      : "Your own comments never notify you. Clicking a notification opens the comment on GitHub.")
             }
-            .disabled(notifications == "off")
+            .disabled(prefs.notificationMode == "off")
 
             Section {
                 Toggle(isOn: $prefs.ignoreBotActivity) {
@@ -81,7 +80,7 @@ struct NotificationsTab: View {
             } footer: {
                 Text("Reviews and comments from these never notify you. Their PRs still show, and their checks still count.")
             }
-            .disabled(notifications == "off" || (!prefs.notifyReviews && !prefs.notifyComments))
+            .disabled(prefs.notificationMode == "off" || (!prefs.notifyReviews && !prefs.notifyComments))
         }
         .formStyle(.grouped)
     }

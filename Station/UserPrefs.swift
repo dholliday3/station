@@ -120,6 +120,7 @@ final class UserPrefs {
         static let notifyActivityOn = "notifyActivityOn"
         static let ignoreBotActivity = "ignoreBotActivity"
         static let mutedAuthors = "mutedAuthors"
+        static let notifications = Prefs.notifications
     }
 
 
@@ -217,6 +218,8 @@ final class UserPrefs {
     var notifyActivityOn: ActivityScope { didSet { defaults.set(notifyActivityOn.rawValue, forKey: Key.notifyActivityOn) } }
     /// Skip reviews and comments from bots (GitHub apps, "[bot]" accounts).
     var ignoreBotActivity: Bool { didSet { defaults.set(ignoreBotActivity, forKey: Key.ignoreBotActivity) } }
+    /// When checks notify: "all" (fails and turns green), "failOnly", or "off".
+    var notificationMode: String { didSet { defaults.set(notificationMode, forKey: Key.notifications) } }
     /// People and bots whose reviews and comments never notify you.
     var mutedAuthors: [String] { didSet { defaults.set(mutedAuthors, forKey: Key.mutedAuthors) } }
 
@@ -247,12 +250,12 @@ final class UserPrefs {
     /// Popover section titles the user has collapsed. Local only.
     var collapsedSections: Set<String> { didSet { defaults.set(Array(collapsedSections).sorted(), forKey: Key.collapsed) } }
 
-    private let defaults: UserDefaults
+    private let defaults: PrefsStore
     private let cloud: NSUbiquitousKeyValueStore?
     private var applyingRemote = false
     private var observer: (any NSObjectProtocol)?
 
-    init(defaults: UserDefaults = .standard, cloud: NSUbiquitousKeyValueStore? = nil) {
+    init(defaults: PrefsStore = .shared, cloud: NSUbiquitousKeyValueStore? = nil) {
         self.defaults = defaults
         self.cloud = cloud
         cloud?.synchronize()
@@ -318,6 +321,7 @@ final class UserPrefs {
         notifyActivityOn = ActivityScope(rawValue: defaults.string(forKey: Key.notifyActivityOn) ?? "") ?? .mine
         ignoreBotActivity = defaults.object(forKey: Key.ignoreBotActivity) as? Bool ?? true
         mutedAuthors = defaults.stringArray(forKey: Key.mutedAuthors) ?? []
+        notificationMode = defaults.string(forKey: Key.notifications) ?? "all"
 
         if let cloud {
             observer = NotificationCenter.default.addObserver(

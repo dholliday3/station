@@ -1,4 +1,5 @@
 import AppKit
+import onramp
 import Carbon.HIToolbox
 import StoplightCore
 
@@ -149,21 +150,15 @@ final class GlobalHotkey: @unchecked Sendable {
 
 /// Clipboard actions shared by the row buttons, the context menu, and the hotkeys.
 enum PRActions {
-    /// Onramp (the diff/review app) is installed: offer "Review in Onramp".
-    static var onrampInstalled: Bool {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.timwheeler.onramp") != nil
-    }
+    /// Reviews open in Station's own windows, so "Review in Onramp" is always there.
+    static var onrampInstalled: Bool { true }
 
     /// Where to get Onramp (Settings → Row buttons links here while it isn't installed).
     static let onrampDownload = URL(string: "https://github.com/timmywheels/onramp/releases/latest")!
 
-    /// Open the PR in Onramp (as a tab; it finds your local clone).
-    static func openInOnramp(_ pr: PullRequest) {
-        var c = URLComponents()
-        c.scheme = "onramp"
-        c.host = "pr"
-        c.queryItems = [URLQueryItem(name: "repo", value: pr.repo), URLQueryItem(name: "number", value: String(pr.number))]
-        if let url = c.url { NSWorkspace.shared.open(url) }
+    /// Open the PR's review in a Station window (as a tab; it finds your local clone).
+    @MainActor static func openInOnramp(_ pr: PullRequest) {
+        OnrampHost.openPullRequest(repo: pr.repo, number: pr.number)
     }
 
     static func copyURL(_ pr: PullRequest) { copy(pr.url.absoluteString) }
