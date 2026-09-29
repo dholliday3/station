@@ -4,7 +4,7 @@
   "title": "Station",
   "description": "Where each of your pull requests stands at a glance: CI, reviews, comments, conflicts, merge queue. Enter reviews it in Station.",
   "icon": "extension-icon.png",
-  "author": "dholliday3",
+  "author": "dholliday",
   "categories": [
     "Developer Tools"
   ],

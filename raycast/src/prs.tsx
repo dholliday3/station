@@ -18,16 +18,12 @@ import { demoActivity, demoPRs } from "./lib/demo";
 import { findGh } from "./lib/github";
 import { ColorProfile, compactAgo, isBranch, isStale, orderedRows } from "./lib/model";
 import { loadPRs, NoSourceError } from "./lib/source";
-import { columns, Light, lightLabel, statusMark, statusTooltip, verdict } from "./lib/status";
+import { asFilter, columns, Filter, Light, lightLabel, LIGHTS, statusMark, statusTooltip, verdict } from "./lib/status";
 import { badgeAccessory, columnAccessory, glyph, lightIcon, menuBarDots, statusImage } from "./style";
 
 interface Preferences {
   ghPath?: string;
 }
-
-const LIGHTS: Light[] = ["needsYou", "waiting", "ready", "quiet", "merged"];
-
-type Filter = "all" | Light;
 
 function accessories(row: ViewRow, pinned: boolean, profile: ColorProfile): List.Item.Accessory[] {
   const { pr } = row;
@@ -49,7 +45,8 @@ function FilterDropdown(props: {
     <List.Dropdown
       tooltip="Filter by where each PR stands"
       storeValue
-      onChange={(value) => props.onChange(value as Filter)}
+      defaultValue="all"
+      onChange={(value) => props.onChange(asFilter(value))}
     >
       <List.Dropdown.Item title={`All  ${props.total}`} value="all" icon={menuBarDots} />
       {LIGHTS.map((light) => (

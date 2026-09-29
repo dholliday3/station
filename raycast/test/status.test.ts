@@ -7,7 +7,7 @@ import {
   nodeID,
   PRActivity,
 } from "../src/lib/activity";
-import { columns, dimensions, statusMark, statusTooltip, verdict } from "../src/lib/status";
+import { asFilter, columns, dimensions, statusMark, statusTooltip, verdict } from "../src/lib/status";
 import { check, makePR } from "./fixtures";
 
 const NOW = Date.parse("2026-09-25T12:00:00Z");
@@ -253,5 +253,14 @@ describe("activity from Station's snapshot", () => {
         { login: "carol", state: "APPROVED" },
       ],
     });
+  });
+});
+
+describe("asFilter", () => {
+  it("falls back to All for anything that isn't a light", () => {
+    expect(asFilter("needsYou")).toBe("needsYou");
+    expect(asFilter("all")).toBe("all");
+    expect(asFilter("")).toBe("all");
+    expect(asFilter(undefined)).toBe("all");
   });
 });
