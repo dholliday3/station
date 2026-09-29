@@ -1,10 +1,8 @@
 import { Action, ActionPanel, Application, Icon, Keyboard } from "@raycast/api";
 import { ReactNode } from "react";
 import { actionsRunURL, checksURL, isBranch, PullRequest, queueURL, reviewURL, shareLink, shortRef } from "./lib/model";
+import { STATION_RELEASES } from "./lib/install";
 import { glyph } from "./style";
-
-export const STATION_BUNDLE_ID = "com.timwheeler.station";
-const STATION_DOWNLOAD = "https://github.com/timmywheels/station/releases/latest";
 
 /**
  * ↵ is the first action, ⌘↵ the second. In the list, ↵ opens the details page and ⌘↵ reviews in Station;
@@ -128,7 +126,7 @@ export function PRActions(props: {
             shortcut={{ modifiers: ["cmd", "opt"], key: "o" }}
           />
         ) : (
-          <Action.OpenInBrowser title="Get Station" icon={Icon.Download} url={STATION_DOWNLOAD} />
+          <Action.OpenInBrowser title="Get Station" icon={Icon.Download} url={STATION_RELEASES} />
         )}
       </ActionPanel.Section>
     </ActionPanel>

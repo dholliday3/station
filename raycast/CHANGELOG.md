@@ -6,4 +6,5 @@
 - Reads the running Station app's snapshot; falls back to the GitHub CLI
 - Enter opens a details page per PR: live CI with each job's step and the log lines behind a failure, the merge queue, and the conversation with unresolved threads first
 - Cmd+Enter reviews it in Station
+- Set-up rows install or start Station, and help install and sign in to the GitHub CLI
 - Stacked PRs sit under their parent, like Station's panel

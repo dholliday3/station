@@ -36,3 +36,13 @@ export function parseSnapshot(body: unknown): Snapshot | null {
     colorProfile: raw.colorProfile === "deuteranopia" ? "deuteranopia" : "default",
   };
 }
+
+/** Polls until Station answers, for right after it's opened or installed. */
+export async function waitForStation(timeoutMs = 45_000, url: string = STATION_SNAPSHOT_URL): Promise<boolean> {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    if (await fetchSnapshot(url, 1000)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return false;
+}

@@ -30,6 +30,14 @@ The icons on the right are always in the same order, so they line up down the li
 
 ## Setup
 
+A **Set up** row at the top of the list covers whatever's missing, and each can be dismissed:
+
+- **Install Station** (`↵`): downloads the latest release from GitHub, installs it only if it's Station signed with a Developer ID and notarized, then opens it and refreshes the list once it answers. `⌘↵` opens the download page instead.
+- **Start Station**, when it's installed but not running.
+- **Install / sign in to the GitHub CLI**: copies `brew install gh && gh auth login` (or `gh auth login`) to paste into a terminal.
+
+What each one provides:
+
 - **[Station](https://github.com/timmywheels/station)** running: the list comes from its snapshot on `127.0.0.1:47400`, so it matches the menu bar exactly and costs no extra GitHub calls.
 - **[GitHub CLI](https://cli.github.com)** signed in (`gh auth login`): unresolved threads, requested reviewers and merge queue history come from one GraphQL query through `gh`, and the details page's live CI and conversation come from two more per refresh (1 point each against GitHub's rate limit). Failed job logs are read once each. Without `gh`, comments and reviews still come from Station's snapshot. It's also the fallback when Station isn't running.
 
