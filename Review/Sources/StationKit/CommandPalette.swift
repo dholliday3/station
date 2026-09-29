@@ -1,12 +1,12 @@
 import AppKit
 
 /// ⌘K (or ⌘P): go anywhere by typing. "#123" or "123" opens a pull request, a hash opens a
-/// commit, "@name" lists someone's PRs and commits, anything else searches PRs,
-/// commits, branches and commands. ↑↓ to choose, ↩ to go, Esc to close.
+/// commit, "@name" lists someone's PRs and commits, anything else searches agents, PRs, the
+/// diff's files, commits, branches and commands. ↑↓ to choose, ↩ to go, Esc to close.
 @MainActor
 final class CommandPalette: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     struct Item {
-        enum Kind: Int { case command, pr, commit, branch }
+        enum Kind: Int { case command, pr, commit, branch, agent, file }
         let kind: Kind
         let title: String
         let subtitle: String
@@ -22,6 +22,9 @@ final class CommandPalette: NSObject, NSTextFieldDelegate, NSTableViewDataSource
         var openCommit: (String) -> Void
         var switchBranch: (String) -> Void
         var commands: [(title: String, symbol: String, keys: String, run: () -> Void)]
+        /// The files in the review on screen, and going to one.
+        var files: [String] = []
+        var openFile: (String) -> Void = { _ in }
     }
 
     static let shared = CommandPalette()
@@ -195,10 +198,24 @@ final class CommandPalette: NSObject, NSTextFieldDelegate, NSTableViewDataSource
         }
     }
 
+    /// Agents (from the host) and the diff's files: found by name like everything else.
+    private var extraItems: [Item] {
+        let agents = (StationHost.paletteAgents?() ?? []).map { a in
+            Item(kind: .agent, title: a.title, subtitle: a.subtitle, symbol: a.live ? "circle.fill" : "circle",
+                 haystack: (a.title + " " + a.subtitle + " " + a.search).lowercased()) { Navigator.go(.agents(session: a.id)) }
+        }
+        let files = (actions?.files ?? []).map { path in
+            Item(kind: .file, title: (path as NSString).lastPathComponent, subtitle: (path as NSString).deletingLastPathComponent,
+                 symbol: "doc", haystack: path.lowercased()) { [weak self] in self?.actions?.openFile(path) }
+        }
+        return agents + files
+    }
+
     private func refilter() {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let extra = extraItems
         items = Self.results(for: q, prs: prs, commits: commits, find: { [repo] in findCommit(repoRoot: repo, rev: $0) },
-                             make: (prItem, commitItem, branchItem), branches: branches, commands: commandItems,
+                             make: (prItem, commitItem, branchItem), branches: branches, commands: commandItems, extra: extra,
                              openNumber: { [weak self] n in Item(kind: .pr, title: "Open pull request #\(n)", subtitle: "Fetch it from GitHub",
                                                                    symbol: "arrow.triangle.pull", haystack: "") { self?.actions?.openPR(n) } })
         table.reloadData()
@@ -211,10 +228,12 @@ final class CommandPalette: NSObject, NSTextFieldDelegate, NSTableViewDataSource
     /// What to show for `q`. Pure apart from `find` (a git lookup), so it can be reasoned about on its own.
     static func results(for q: String, prs: [GitHub.PRItem], commits: [CommitInfo], find: (String) -> CommitInfo?,
                         make: ((GitHub.PRItem) -> Item, (CommitInfo) -> Item, (String) -> Item),
-                        branches: [String], commands: [Item], openNumber: (Int) -> Item) -> [Item] {
+                        branches: [String], commands: [Item], extra: [Item] = [], openNumber: (Int) -> Item) -> [Item] {
         let lower = q.lowercased()
         if q.isEmpty {
-            return Array(prs.prefix(6).map(make.0)) + Array(commits.prefix(4).map(make.1)) + commands
+            // Agents that are live (their symbol is filled) come first: what's happening now.
+            let live = extra.filter { $0.kind == .agent && $0.symbol == "circle.fill" }.prefix(4)
+            return Array(live) + Array(prs.prefix(6).map(make.0)) + Array(commits.prefix(4).map(make.1)) + commands
         }
         var out: [Item] = []
         // "#123" / "123": that PR, even if it isn't in the open list.
@@ -244,7 +263,7 @@ final class CommandPalette: NSObject, NSTextFieldDelegate, NSTableViewDataSource
             }
             return total
         }
-        let pool = commands + prs.map(make.0) + branches.map(make.2) + commits.map(make.1)
+        let pool = commands + extra.filter { $0.kind == .agent } + prs.map(make.0) + extra.filter { $0.kind == .file } + branches.map(make.2) + commits.map(make.1)
         let ranked = pool.compactMap { item in score(item).map { (item, $0) } }
             .enumerated().sorted { ($0.element.1, -$0.offset) > ($1.element.1, -$1.offset) }.map(\.element.0)
         let seen = Set(out.map(\.title))

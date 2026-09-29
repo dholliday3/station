@@ -9,6 +9,15 @@ import StoplightCore
 enum ReviewContextProvider {
     static func start() {
         StationHost.reviewContext = { repo, slug, branch, pr in context(repo: repo, slug: slug, branch: branch, pr: pr) }
+        StationHost.paletteAgents = {
+            AgentSession.all().filter { $0.status != .ended || !($0.info?.isBackground ?? false) }.prefix(200).map { s in
+                let branch = s.info?.branch.map { " · \($0)" } ?? ""
+                let status = s.status == .ended ? (s.info?.lastActivity.map { "ended \($0.formatted(.relative(presentation: .named)))" } ?? "ended") : s.status.word
+                return (id: s.id, title: s.title, subtitle: "Agent · \(s.project)\(branch) · \(status)",
+                        search: "agent " + (s.info?.firstPrompt ?? "") + " " + (s.info?.pr.map { "#\($0.number)" } ?? ""),
+                        live: s.status != .ended)
+            }
+        }
         watch()
     }
 

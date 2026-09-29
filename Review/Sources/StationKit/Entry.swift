@@ -27,6 +27,9 @@ public enum StationHost {
     /// Post `.stationContextChanged` when any of it changes.
     @MainActor public static var reviewContext: ((String, String?, String?, Int?) -> ReviewContext)?
 
+    /// Sessions for ⌘K: id, title, a line under it, extra text to match, and whether it's live.
+    @MainActor public static var paletteAgents: (() -> [(id: String, title: String, subtitle: String, search: String, live: Bool)])?
+
     /// The Agents tab's selection: the host shows that session / reports the one shown.
     @MainActor public static var selectAgent: ((String) -> Void)?
     @MainActor public static var currentAgent: (() -> String?)?

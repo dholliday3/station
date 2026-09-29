@@ -282,10 +282,12 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         }
         let repo = repoPath
         palette.show(over: window, repo: repo, current: doc.prNumber, actions: .init(
-            openPR: { n in (NSApp.delegate as? AppDelegate)?.viewPullRequest(n, repo: repo) { _ in } },
-            openCommit: { sha in var c = review.choice; c.mode = .commit; c.commit = sha; review.setChoice(c) },
+            openPR: { n in Navigator.go(.pullRequest(repo: repo, number: n)) },
+            openCommit: { sha in Navigator.go(.commit(repo: repo, sha: sha)) },
             switchBranch: { b in review.switchBranch(b) },
-            commands: commands))
+            commands: commands,
+            files: doc.files.map(\.path),
+            openFile: { path in Navigator.go(.file(repo: repo, path: path, line: nil)) }))
     }
 
     @objc func showComments(_ sender: Any?) { showRight(.comments) }
