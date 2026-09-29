@@ -611,7 +611,7 @@ struct PRRow: View {
         .overlay(alignment: .trailing) {
             if hovering && !expanded && !editingAlias {
                 HStack(spacing: 12) {
-                    glyph("arrow.up.right", help: "Open on GitHub") { openURL(pr.url) }
+                    glyph("arrow.up.right", help: "Open on GitHub (⌥-click the row)") { openURL(pr.url) }
                     glyph(copied == "url" ? "checkmark" : "doc.on.doc", help: "Copy URL", tint: copied == "url" ? stateColor(.success) : nil) {
                         flash("url") { copy(pr.url.absoluteString) }
                     }
@@ -629,11 +629,21 @@ struct PRRow: View {
     private func toggleExpand() { withAnimation(Self.motion) { model.toggleExpanded(pr.id) } }
 
     private func primaryClick() {
-        if model.prefs.primaryClick == .expand { toggleExpand() } else { openURL(pr.url) }
+        if NSEvent.modifierFlags.contains(.option) { return openURL(pr.url) } // ⌥-click: always GitHub
+        switch model.prefs.primaryClick {
+        case .review: review()
+        case .open: openURL(pr.url)
+        case .expand: toggleExpand()
+        }
     }
 
     private func secondaryClick() {
-        if model.prefs.primaryClick == .expand { openURL(pr.url) } else { toggleExpand() }
+        if model.prefs.primaryClick == .expand { review() } else { toggleExpand() }
+    }
+
+    /// The PR's diff in Station (a branch row has no PR to review: its commit on GitHub).
+    private func review() {
+        if pr.isBranch { openURL(pr.url) } else { PRActions.openInOnramp(pr) }
     }
 
     /// "3 of 16 checks failed" / "2 of 4 checks running" / "12 checks passed" / "1 check passed"

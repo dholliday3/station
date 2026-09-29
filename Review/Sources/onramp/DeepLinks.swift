@@ -29,13 +29,13 @@ enum DeepLinks {
         default:
             break
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
     }
 
     /// Up front, never behind another app's windows (links arrive while you're elsewhere).
     static func alert(_ title: String, _ detail: String) {
         guard ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil else { return log("alert: \(title) — \(detail)") }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail
@@ -147,7 +147,7 @@ enum Clones {
             guard let path = ProcessInfo.processInfo.environment["STATION_CLONE_PATH"] else { DeepLinks.log("would ask for \(slug)"); return nil }
             return accept(URL(fileURLWithPath: path), slug)
         }
-        NSApp.activate(ignoringOtherApps: true) // in front, so nothing that follows opens behind other apps
+        NSApp.activateUnlessTesting() // in front, so nothing that follows opens behind other apps
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

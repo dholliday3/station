@@ -27,8 +27,8 @@ public enum OnrampHost {
     @MainActor @discardableResult public static func show(_ mode: StationMode) -> Bool {
         guard let c = (NSApp.delegate as? AppDelegate)?.front else { return false }
         c.setMode(mode)
-        c.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        c.window?.present()
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { NSApp.activateUnlessTesting() } // tests never take focus
         return true
     }
 
@@ -46,7 +46,7 @@ public enum OnrampHost {
     @MainActor public static func openProject(_ path: String) {
         guard let app = NSApp.delegate as? AppDelegate, let root = RecentProjects.repoRoot(of: path) else { return }
         app.openProject(root)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
     }
 
     // MARK: Moving from Onramp (Station's migration uses these)

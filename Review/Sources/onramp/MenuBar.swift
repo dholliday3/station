@@ -52,7 +52,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         let policy: NSApplication.ActivationPolicy = (s.dockIcon || !(s.menuBar || hosted)) ? .regular : .accessory
         if NSApp.activationPolicy() != policy {
             NSApp.setActivationPolicy(policy)
-            if policy == .regular { NSApp.activate(ignoringOtherApps: true) } // its menus come back in front
+            if policy == .regular { NSApp.activateUnlessTesting() } // its menus come back in front
         }
     }
 
@@ -248,7 +248,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     }
 
     @objc private func checkForUpdates() {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
         Updater.shared.checkInteractively()
     }
 

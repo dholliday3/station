@@ -110,7 +110,7 @@ enum StationSettings {
             w.center()
             window = w
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
         window?.makeKeyAndOrderFront(nil)
     }
 }

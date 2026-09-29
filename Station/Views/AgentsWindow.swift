@@ -25,8 +25,8 @@ enum AgentsWindow {
             w.center()
             window = w
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        NSApp.activateUnlessTesting()
+        window?.present()
     }
 }
 

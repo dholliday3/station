@@ -185,11 +185,18 @@ final class UserPrefs {
     /// Local only.
     var refreshRate: RefreshRate { didSet { defaults.set(refreshRate.rawValue, forKey: Key.refreshSeconds) } }
 
-    /// What a single click on a PR row does; the other action moves to double-click (US-037).
+    /// What a single click on a PR row does; double-click (and ⌘-click) shows its details, or
+    /// reviews it when a click shows details (US-037).
     enum PrimaryClick: String, CaseIterable, Identifiable {
-        case open, expand
+        case review, open, expand
         var id: String { rawValue }
-        var title: String { self == .open ? "Opens it on GitHub" : "Shows its details" }
+        var title: String {
+            switch self {
+            case .review: "Opens its diff in Station"
+            case .open: "Opens it on GitHub"
+            case .expand: "Shows its details"
+            }
+        }
     }
     /// Local only.
     var primaryClick: PrimaryClick { didSet { defaults.set(primaryClick.rawValue, forKey: Key.primaryClick) } }
@@ -297,7 +304,7 @@ final class UserPrefs {
         }
         defaults.set(RowAction.allCases.map(\.rawValue), forKey: Key.rowActionsSeen)
         sectionCounts = SectionCounts(rawValue: defaults.string(forKey: Key.sectionCounts) ?? "") ?? .off
-        primaryClick = PrimaryClick(rawValue: defaults.string(forKey: Key.primaryClick) ?? "") ?? .open
+        primaryClick = PrimaryClick(rawValue: defaults.string(forKey: Key.primaryClick) ?? "") ?? .review
         refreshRate = RefreshRate(rawValue: defaults.integer(forKey: Key.refreshSeconds)) ?? .automatic
         stackOrder = StackOrder(rawValue: defaults.string(forKey: Key.stackOrder) ?? "") ?? .bottomFirst
         showQueues = defaults.object(forKey: Key.showQueues) as? Bool ?? true

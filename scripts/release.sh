@@ -9,10 +9,23 @@
 #   xcrun notarytool store-credentials station --apple-id <apple id> --team-id S3RY6Q3EW2
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Build from a snapshot of HEAD, not the working folder: edits made while a release runs (it takes
+# ~15 minutes) can't end up half-compiled in it. Uncommitted changes aren't released.
+if [ -z "${STATION_RELEASE_SNAPSHOT:-}" ]; then
+  ORIG=$PWD
+  SNAP=$(mktemp -d)/station
+  git worktree add --detach --quiet "$SNAP" HEAD
+  trap 'git -C "$ORIG" worktree remove --force "$SNAP" 2>/dev/null || true' EXIT
+  git diff --quiet HEAD || printf '\033[1;33m▸\033[0m releasing %s; uncommitted changes are left out\n' "$(git rev-parse --short HEAD)"
+  # Reuse the Rust build cache (build-core.sh expects core/target); results land in this folder's dist/.
+  mkdir -p "$ORIG/core/target" && ln -s "$ORIG/core/target" "$SNAP/core/target"
+  STATION_RELEASE_SNAPSHOT=1 STATION_RELEASE_DIST="$ORIG/dist" "$SNAP/scripts/release.sh" "$@"
+  exit
+fi
 VERSION=$(grep MARKETING_VERSION project.yml | head -1 | awk '{print $2}')
 TEAM=$(grep DEVELOPMENT_TEAM project.yml | head -1 | awk '{print $2}')
 NOTARIZE_DMG=0; [ "${1:-}" = "--notarize-dmg" ] && NOTARIZE_DMG=1
-DIST=dist; rm -rf "$DIST"; mkdir -p "$DIST"
+DIST=${STATION_RELEASE_DIST:-dist}; rm -rf "$DIST"; mkdir -p "$DIST"
 say() { printf '\033[1;32m▸\033[0m %s\n' "$*"; }
 
 say "Rust core (universal)"

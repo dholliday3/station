@@ -107,7 +107,7 @@ enum Migration {
         w.isReleasedWhenClosed = false
         w.center()
         window = w
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
         w.makeKeyAndOrderFront(nil)
         DispatchQueue.global(qos: .userInitiated).async {
             let agents = OnrampHost.onrampAgentRegistrations()

@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // `station <repo>` while we're running: open it as a tab.
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(openFromCLI(_:)), name: CLI.openNotification, object: nil)
         // Self-tests run while you keep typing elsewhere: never steal focus.
-        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { NSApp.activate(ignoringOtherApps: true) }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { NSApp.activateUnlessTesting() }
         // Opened by a link: that's the first thing to show (the PR as a tab), not the last project.
         if !pendingLinks.isEmpty {
             let links = pendingLinks
@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         PerfMark.mark("recent")
         let c = makeController(repoPath: repo, first: true)
         PerfMark.mark("controller")
-        c.window?.makeKeyAndOrderFront(nil)
+        c.window?.present()
         PerfMark.mark("shown")
         c.start()
         PerfMark.mark("started")
@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             welcome = w
         }
         welcome?.showWindow(nil)
-        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { NSApp.activate(ignoringOtherApps: true) }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { NSApp.activateUnlessTesting() }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "welcome" { SelfTest.snap(window: welcome?.window) }
     }
 
@@ -102,16 +102,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if controllers.isEmpty {
             initialRepo = repo
             let c = makeController(repoPath: repo, first: true)
-            c.window?.makeKeyAndOrderFront(nil)
+            c.window?.present()
             c.start()
         } else if let existing = controllers.first(where: { $0.repoPath == repo }) {
             existing.window?.tabGroup?.selectedWindow = existing.window
-            existing.window?.makeKeyAndOrderFront(nil)
+            existing.window?.present()
             existing.setMode(.review)
         } else {
             openTab(repo: repo)
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activateUnlessTesting()
     }
 
     @objc private func openFromCLI(_ note: Notification) {
@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let hostWindow = host?.window, let w = c.window {
             hostWindow.addTabbedWindow(w, ordered: .above)
         }
-        c.window?.makeKeyAndOrderFront(nil)
+        c.window?.present()
         if start { c.start() }
         return c
     }
@@ -179,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func viewPullRequest(_ n: Int, repo: String, done: @escaping (String?) -> Void) {
         if let tab = controllers.first(where: { $0.repoPath == repo && $0.isShowing(pr: n) }), let w = tab.window {
             w.tabGroup?.selectedWindow = w // bring its tab forward
-            w.makeKeyAndOrderFront(nil)
+            w.present()
             tab.setMode(.review)
             tab.review.openPullRequest(n, done: done) // re-fetch: it may have new commits
             return

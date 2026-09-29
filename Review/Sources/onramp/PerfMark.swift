@@ -19,3 +19,21 @@ public enum PerfMark {
         return Date(timeIntervalSince1970: Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6)
     }()
 }
+
+import AppKit
+
+public extension NSWindow {
+    /// Bring the window forward, except during a self-test: then it opens behind your other
+    /// windows, so a test run (perf.sh, a release) never takes over the screen. Captures by
+    /// window id still see it.
+    @MainActor func present() {
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] != nil { orderBack(nil) } else { makeKeyAndOrderFront(nil) }
+    }
+}
+
+public extension NSApplication {
+    /// Come to the front, except during a self-test (see NSWindow.present).
+    @MainActor func activateUnlessTesting() {
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == nil { activate(ignoringOtherApps: true) }
+    }
+}
