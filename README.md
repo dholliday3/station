@@ -8,6 +8,7 @@ The ADE (agentic development environment) for your Mac. The menu bar shows your 
 - **Review:** `station` in any git repo (Station → Install Command Line Tool… puts it in `~/.local/bin`), a PR's Review button in the panel, or ⌘P in a window.
 - **Agents:** `station mcp` is an MCP server. In Claude Code: `claude mcp add station -- station mcp`, or Agent → Connect in a review window. `station --help` lists the plain CLI.
 - **Settings:** the Settings window, or `~/.config/station/settings.json` (edits apply as you save).
+- **Raycast:** `raycast/` is a Raycast extension on the same snapshot: every PR with its own light and Comments · Review · CI · Merge · Queue at a glance; ↵ for details, ⌘↵ to review in Station. See [raycast/README.md](raycast/README.md).
 
 Diagnostics while it runs: `curl -s http://127.0.0.1:47400/status.json`.
 
