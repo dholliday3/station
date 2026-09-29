@@ -43,7 +43,13 @@ final class SessionCatalog {
     }
 
     private(set) var sessions: [String: Info] = [:]
+    /// For the perf test: passes run, and how long the last of each took (seconds).
+    struct Timings { var scans = 0, lastScan = 0.0, counts = 0, lastCount = 0.0, files = 0 }
+    @ObservationIgnored private(set) var timings = Timings()
     @ObservationIgnored private var tallies: [String: Tally] = [:]
+    /// Each transcript's last skim, keyed by path: re-read only when its size or date moves.
+    private struct Skim: Sendable { var size: Int; var modified: Date; var info: Info }
+    @ObservationIgnored private var skims: [String: Skim] = [:]
     @ObservationIgnored private var scanning = false
     @ObservationIgnored private var counting = false
     @ObservationIgnored private var timer: Timer?
@@ -51,10 +57,17 @@ final class SessionCatalog {
     nonisolated static let window: TimeInterval = 14 * 24 * 3600
 
     nonisolated static var root: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects") }
-    nonisolated private static var cacheURL: URL { OnrampHostSettingsDir.url.appendingPathComponent("sessions-cache.json") }
+    /// In Caches, not ~/.config/station: that folder is watched for settings changes, and this
+    /// file is rewritten every time a transcript grows. STATION_CACHE_DIR for tests.
+    nonisolated private static var cacheURL: URL {
+        let dir = ProcessInfo.processInfo.environment["STATION_CACHE_DIR"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("com.timwheeler.station")
+        return dir.appendingPathComponent("sessions-cache.json")
+    }
 
     func start() {
         guard timer == nil else { return }
+        try? FileManager.default.removeItem(at: OnrampHostSettingsDir.url.appendingPathComponent("sessions-cache.json")) // where 1.1 kept it
         tallies = (try? Data(contentsOf: Self.cacheURL)).flatMap { try? JSONDecoder().decode([String: Tally].self, from: $0) } ?? [:]
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in MainActor.assumeIsolated { SessionCatalog.shared.refresh() } }
@@ -65,13 +78,18 @@ final class SessionCatalog {
     func refresh() {
         guard !scanning else { return }
         scanning = true
-        let tallies = self.tallies
+        let tallies = self.tallies, known = self.skims
         DispatchQueue.global(qos: .utility).async {
+            let began = DispatchTime.now()
             let files = Self.recentFiles()
-            var infos: [String: Info] = [:]
-            for (file, modified) in files {
-                var info = Self.skim(file)
-                info.lastActivity = info.lastActivity ?? modified
+            var infos: [String: Info] = [:], skims: [String: Skim] = [:]
+            for (file, modified, size) in files {
+                var info: Info
+                if let k = known[file.path], k.size == size, k.modified == modified { info = k.info } else {
+                    info = autoreleasepool { Self.skim(file) }
+                    info.lastActivity = info.lastActivity ?? modified
+                }
+                skims[file.path] = Skim(size: size, modified: modified, info: info)
                 if let t = tallies[file.path] {
                     info.inputTokens = t.input; info.outputTokens = t.output; info.cacheReadTokens = t.cacheRead; info.cacheWriteTokens = t.cacheWrite; info.turns = t.turns
                 }
@@ -81,7 +99,10 @@ final class SessionCatalog {
                 MainActor.assumeIsolated {
                     let catalog = SessionCatalog.shared
                     if infos != catalog.sessions { catalog.sessions = infos }
+                    catalog.skims = skims
                     catalog.scanning = false
+                    catalog.timings.scans += 1; catalog.timings.files = files.count
+                    catalog.timings.lastScan = Double(DispatchTime.now().uptimeNanoseconds - began.uptimeNanoseconds) / 1e9
                     catalog.count(files.map(\.0))
                 }
             }
@@ -89,12 +110,12 @@ final class SessionCatalog {
     }
 
     /// Session transcripts only (`<project>/<id>.jsonl`; subagents' logs live deeper), newest first.
-    nonisolated private static func recentFiles() -> [(URL, Date)] {
+    nonisolated private static func recentFiles() -> [(URL, Date, Int)] {
         let fm = FileManager.default, cutoff = Date().addingTimeInterval(-window)
-        var out: [(URL, Date)] = []
+        var out: [(URL, Date, Int)] = []
         for folder in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
-            for file in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] where file.pathExtension == "jsonl" {
-                if let m = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, m > cutoff { out.append((file, m)) }
+            for file in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])) ?? [] where file.pathExtension == "jsonl" {
+                if let v = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]), let m = v.contentModificationDate, m > cutoff { out.append((file, m, v.fileSize ?? 0)) }
             }
         }
         return out.sorted { $0.1 > $1.1 }
@@ -106,6 +127,8 @@ final class SessionCatalog {
         counting = true
         let known = tallies
         DispatchQueue.global(qos: .utility).async {
+            let began = DispatchTime.now()
+            let elapsed = { Double(DispatchTime.now().uptimeNanoseconds - began.uptimeNanoseconds) / 1e9 }
             var tallies = known
             var changed = false
             for file in files {
@@ -113,18 +136,24 @@ final class SessionCatalog {
                 var t = tallies[file.path] ?? Tally()
                 if size < t.offset { t = Tally() } // rewritten: count again
                 guard size > t.offset else { continue }
-                Self.tally(file, into: &t)
+                autoreleasepool { Self.tally(file, into: &t) } // parsed JSON is autoreleased: free it per file, not per pass
                 tallies[file.path] = t
                 changed = true
             }
-            guard changed else { DispatchQueue.main.async { MainActor.assumeIsolated { SessionCatalog.shared.counting = false } }; return }
+            guard changed else {
+                let t = elapsed()
+                DispatchQueue.main.async { MainActor.assumeIsolated { let c = SessionCatalog.shared; c.counting = false; c.timings.counts += 1; c.timings.lastCount = t } }
+                return
+            }
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? JSONEncoder().encode(tallies).write(to: Self.cacheURL, options: .atomic)
+            let took = elapsed()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     let catalog = SessionCatalog.shared
                     catalog.tallies = tallies
                     catalog.counting = false
+                    catalog.timings.counts += 1; catalog.timings.lastCount = took
                     var sessions = catalog.sessions
                     for file in files {
                         guard let t = tallies[file.path] else { continue }

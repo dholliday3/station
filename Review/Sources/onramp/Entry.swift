@@ -82,17 +82,22 @@ public enum OnrampHost {
     /// `station comments|reply|resolve|…` runs the agent CLI and exits; `station [repo]` (or a
     /// plain launch) starts the app. Never returns.
     public static func main() -> Never {
+        PerfMark.mark("main")
         if let status = CLI.run(Array(CommandLine.arguments.dropFirst())) { exit(status) }
+        PerfMark.mark("cli")
         let repoPath: String?
         switch CLI.prepareOpen(Array(CommandLine.arguments.dropFirst())) {
         case let .exit(status): exit(status)
         case let .run(repo): repoPath = repo
         }
+        PerfMark.mark("prepareOpen")
         MainActor.assumeIsolated { // called from main.swift: the main thread
             let app = NSApplication.shared
+            PerfMark.mark("nsapp")
             let delegate = AppDelegate(repoPath: repoPath)
             app.delegate = delegate
             app.setActivationPolicy(.regular)
+            PerfMark.mark("run")
             app.run()
         }
         exit(0)

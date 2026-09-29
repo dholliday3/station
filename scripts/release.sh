@@ -19,6 +19,9 @@ say "Rust core (universal)"
 scripts/build-core.sh
 xcodegen generate >/dev/null
 
+# Never ship slower: scripts/perf.sh holds the budgets. SKIP_PERF=1 only for an emergency fix.
+if [ "${SKIP_PERF:-}" != 1 ]; then say "Perf budget"; scripts/perf.sh; fi
+
 say "Archiving Station $VERSION"
 xcodebuild archive -scheme Station -configuration Release -archivePath "$DIST/Station.xcarchive" \
   -derivedDataPath "$DIST/dd" -destination 'generic/platform=macOS' -allowProvisioningUpdates -quiet

@@ -17,8 +17,19 @@ enum AppIcon {
     static var choice: String { SettingsFile.shared.value("app_icon") as? String ?? "automatic" }
 
     static func apply() {
-        let dark = choice == "dark" || (choice != "light" && NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
-        if let image = NSImage(named: dark ? "StationIconDark" : "StationIconLight") { NSApp.applicationIconImage = image }
+        // The bundle's icon is the dark one: nothing to set (setting one costs ~80ms).
+        if wantsDark {
+            if overridden { NSApp.applicationIconImage = nil; overridden = false }
+            return
+        }
+        // Light: after the first window draws, not in the middle of launch.
+        DispatchQueue.main.async {
+            if !wantsDark, let image = NSImage(named: "StationIconLight") { NSApp.applicationIconImage = image; overridden = true }
+        }
+    }
+    private static var overridden = false
+    private static var wantsDark: Bool {
+        choice == "dark" || (choice != "light" && NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
     }
 
     /// Re-apply whenever settings.json changes (the Settings window, or a hand edit).

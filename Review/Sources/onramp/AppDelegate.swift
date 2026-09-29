@@ -25,13 +25,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PerfMark.mark("didFinishLaunching")
         didLaunch = true
         NSApp.mainMenu = makeMainMenu()
+        PerfMark.mark("menu")
         Style.shared.start()
+        PerfMark.mark("style")
         Installation.syncIntegrations()
+        PerfMark.mark("integrations")
         Updater.shared.start()
         MenuBarItem.shared.start()
+        PerfMark.mark("updater+menubar")
         OnrampHost.didLaunch?()
+        PerfMark.mark("host")
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "link-cold" { // launched by a link, nothing recent
             FileHandle.standardError.write("[selftest] didFinishLaunching: \(controllers.count) tabs\n".data(using: .utf8)!)
             DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [self] in

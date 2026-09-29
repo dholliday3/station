@@ -10,11 +10,17 @@ enum StationMenuBar {
 
     static func start() {
         let model = AppModel.shared
+        PerfMark.mark("station.start")
         model.start()  // polling + snapshot server, at launch, not on first click
+        PerfMark.mark("model")
         statusPanel = StatusPanelController(model: model)
+        PerfMark.mark("panel")
         AppIcon.start()
+        PerfMark.mark("appicon")
         AgentBoard.shared.start()
+        PerfMark.mark("agentboard")
         SessionCatalog.shared.start()
+        PerfMark.mark("catalog")
         // The main window's Agents and Pull Requests tabs (Review is Onramp's own).
         OnrampHost.makeModeView = { mode -> NSViewController in
             mode == .agents ? NSHostingController(rootView: AgentsView()) : NSHostingController(rootView: PullRequestsPane(model: model))
@@ -26,6 +32,7 @@ enum StationMenuBar {
             item.target = AgentsWindowOpener.shared
             review.insertItem(item, at: 0)
         }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "perf" { PerfTest.run() }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agents" { AgentsSelfTest.run() }
         Migration.offerIfNeeded()
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agentswindow" {

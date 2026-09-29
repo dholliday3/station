@@ -74,9 +74,11 @@ final class Style {
     private var appearanceObservation: NSKeyValueObservation?
 
     func start() {
-        loadMonospaceFamilies()
         load()
+        PerfMark.mark("style.load")
         apply()
+        PerfMark.mark("style.apply")
+        loadMonospaceFamilies() // after apply: enumerating fonts holds the font catalog the editor font needs
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in
             Task { @MainActor in Style.shared.apply() }
         }
@@ -93,7 +95,9 @@ final class Style {
         }
         var all = Theme.builtIn
         let extensionThemes = Extensions.load()
+        PerfMark.mark("style.extensions")
         setLanguages(configs: Extensions.loaded.flatMap(\.languages))
+        PerfMark.mark("style.languages")
         for t in extensionThemes {
             all.removeAll { $0.name == t.name }
             all.append(t)
@@ -124,17 +128,35 @@ final class Style {
     }
 
     /// Re-read settings.json and themes/ when they change on disk.
+    /// settings.json's size and date when last read, so unrelated writes nearby are ignored.
+    private var settingsStamp: String?
+    private static func stamp(_ url: URL) -> String? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)).map { "\($0[.size] ?? 0) \(($0[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)" }
+    }
+
     private func watch() {
         watchers.forEach { $0.cancel() }
         watchers = []
         try? FileManager.default.createDirectory(at: Self.themesDir, withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: Self.settingsURL.path) { save() }
         try? FileManager.default.createDirectory(at: Extensions.userDir, withIntermediateDirectories: true)
+        settingsStamp = Self.stamp(Self.settingsURL)
         for url in [Self.configDir, Self.themesDir, Extensions.userDir] {
             let fd = open(url.path, O_EVTONLY)
             guard fd >= 0 else { continue }
             let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
-            source.setEventHandler { Task { @MainActor in Style.shared.reload() } }
+            // The config folder also holds agent and app state that changes all the time: only
+            // settings.json itself counts there (reloading means re-reading every extension).
+            let onlySettings = url == Self.configDir
+            source.setEventHandler { Task { @MainActor in
+                let style = Style.shared
+                if onlySettings {
+                    let now = Self.stamp(Self.settingsURL)
+                    guard now != style.settingsStamp else { return }
+                    style.settingsStamp = now
+                }
+                style.reload()
+            } }
             source.setCancelHandler { close(fd) }
             source.resume()
             watchers.append(source)
@@ -212,9 +234,13 @@ final class Style {
         default: NSApp.appearance = nil
         }
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        PerfMark.mark("apply.appearance")
         let wanted = dark ? settings.themeDark : settings.themeLight
         theme = themes.first { $0.name == wanted && $0.isDark == dark } ?? (dark ? Theme.dark : Theme.light)
-        DiffStyle.apply(theme: theme, font: font, headerFont: font(weight: 8, sizeDelta: -0.5))
+        let f = font, hf = font(weight: 8, sizeDelta: -0.5)
+        PerfMark.mark("apply.fonts")
+        DiffStyle.apply(theme: theme, font: f, headerFont: hf)
+        PerfMark.mark("apply.diffstyle")
         NotificationCenter.default.post(name: .styleChanged, object: nil)
     }
 

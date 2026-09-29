@@ -125,6 +125,8 @@ enum CLI {
         let env = ProcessInfo.processInfo.environment
         // Double-clicked / Dock: no path, and not started from a terminal inside a repo.
         let fromFinder = given == nil && (argv.contains { $0.hasPrefix("-psn") } || FileManager.default.currentDirectoryPath == "/" || env["STATION_DETACHED"] != nil)
+        // Dock / Finder launches start in "/": no repo to look for (skips a ~70ms git call).
+        if given == nil, fromFinder, FileManager.default.currentDirectoryPath == "/" { return .run(repo: nil) }
         let path = given ?? FileManager.default.currentDirectoryPath
         let root: String
         do { root = try repoRoot(URL(fileURLWithPath: path).standardizedFileURL.path) } catch {

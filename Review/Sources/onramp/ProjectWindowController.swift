@@ -17,6 +17,9 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     private(set) var mode: StationMode = .review
     private var reviewSplit: NSSplitViewController?
     private var modeViews: [StationMode: NSViewController] = [:]
+    /// Holds each mode's view once built; switching only shows and hides (swapping the window's
+    /// content controller re-laid out the whole window: ~75ms a switch).
+    private let modeHost = ModeHostController()
     var onClose: ((ProjectWindowController) -> Void)?
 
     var review: ReviewView { reviewView }
@@ -46,7 +49,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         toolbar = SourceToolbar(repoPath: repoPath)
         toolbar.onOpenRepo = { [weak self] path in self?.open(repo: path) }
         toolbar.onToggleComments = { [weak self] in self?.toggleComments(nil) }
-        toolbar.onToggleFiles = { [weak self] in (self?.window?.contentViewController as? NSSplitViewController)?.toggleSidebar(nil) }
+        toolbar.onToggleFiles = { [weak self] in self?.reviewSplit?.toggleSidebar(nil) }
         toolbar.onOpenContext = { [weak self] in self?.openContext(nil) }
         toolbar.onOpenPullRequest = { [weak self] in self?.openPullRequest(nil) }
         toolbar.onMode = { [weak self] m in self?.setMode(m) }
@@ -67,14 +70,16 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         // A content view controller resizes the window to its fitting size (tiny, since
         // the review has no intrinsic size), so size it after, then restore any saved frame.
         reviewSplit = makeSplit()
-        window.contentViewController = mode == .review ? reviewSplit : modeView(mode)
+        modeHost.set(reviewSplit!, for: .review)
+        modeHost.show(mode == .review ? .review : modeView(mode).map { _ in mode } ?? .review)
+        window.contentViewController = modeHost
         window.contentMinSize = NSSize(width: 700, height: 400)
         window.setContentSize(NSSize(width: 1300, height: 850))
         window.center()
         if first {
             window.setFrameAutosaveName("station.window")
             if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames station.split.v2") == nil,
-               let split = window.contentViewController as? NSSplitViewController {
+               let split = reviewSplit {
                 // First launch: files 260, right panel 340; afterwards the saved widths win.
                 split.splitView.setPosition(260, ofDividerAt: 0)
                 split.splitView.setPosition(split.splitView.bounds.width - 340, ofDividerAt: 1)
@@ -129,9 +134,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
         sidebar = FileTreeSidebar()
         wireSidebar()
         guard let window else { return }
-        let frame = window.frame // a new content view controller resizes the window to fit
+        let frame = window.frame
         reviewSplit = makeSplit()
-        window.contentViewController = mode == .review ? reviewSplit : modeView(mode)
+        modeHost.set(reviewSplit!, for: .review)
+        modeHost.show(mode)
         window.setFrame(frame, display: true)
         toolbar.repoPath = path
         toolbar.review = reviewView
@@ -147,18 +153,18 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
 
     /// Agents, Pull Requests or Review (⌘1, ⌘2, ⌘3). The window keeps its size.
     func setMode(_ new: StationMode) {
-        guard let window, new != mode else { return toolbar.setMode(new) }
+        guard new != mode else { return toolbar.setMode(new) }
+        if new != .review, modeView(new) == nil { return } // no host view for it
         mode = new
-        let frame = window.frame
-        window.contentViewController = new == .review ? reviewSplit : modeView(new)
-        window.setFrame(frame, display: true)
+        modeHost.show(new)
         toolbar.setMode(new)
     }
 
     private func modeView(_ m: StationMode) -> NSViewController? {
         if let v = modeViews[m] { return v }
-        let v = OnrampHost.makeModeView?(m)
+        guard let v = OnrampHost.makeModeView?(m) else { return nil }
         modeViews[m] = v
+        modeHost.set(v, for: m)
         return v
     }
 
@@ -301,4 +307,51 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate {
     @objc func collapseAll(_ sender: Any?) { reviewView.document.setAllCollapsed(true) }
     @objc func expandAll(_ sender: Any?) { reviewView.document.setAllCollapsed(false) }
     @objc func toggleResolved(_ sender: Any?) { reviewView.document.setShowResolved(!ReviewFile.showResolved) }
+}
+
+/// The window's content: one child per mode, all kept, one visible.
+@MainActor
+final class ModeHostController: NSViewController {
+    private var modes: [StationMode: NSViewController] = [:]
+    private var current: StationMode?
+    /// Each mode's focus, put back when you return to it.
+    private var focus: [StationMode: NSResponder] = [:]
+
+    override func loadView() { view = NSView() }
+
+    /// Put `vc` in for `mode`, replacing what was there.
+    func set(_ vc: NSViewController, for mode: StationMode) {
+        guard modes[mode] !== vc else { return }
+        if let old = modes[mode] { old.view.removeFromSuperview(); old.removeFromParent() }
+        modes[mode] = vc
+        addChild(vc)
+        if mode == current { attach(vc.view) }
+    }
+
+    /// Only the visible mode is in the window: a hidden SwiftUI view would still re-render on
+    /// every change it observes. Detached views keep their state, so coming back is cheap.
+    func show(_ mode: StationMode) {
+        let window = view.window
+        if let current, let window, let r = window.firstResponder as? NSView, let v = modes[current]?.view, r.isDescendant(of: v) { focus[current] = r }
+        for (m, vc) in modes where m != mode { vc.view.removeFromSuperview() }
+        current = mode
+        guard let v = modes[mode]?.view else { return }
+        attach(v)
+        if let window {
+            if let r = focus[mode], (r as? NSView)?.window === window { window.makeFirstResponder(r) } else { window.makeFirstResponder(nil) }
+        }
+    }
+
+    private func attach(_ v: NSView) {
+        guard v.superview !== view else { return }
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.frame = view.bounds
+        view.addSubview(v)
+        NSLayoutConstraint.activate([
+            v.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            v.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            v.topAnchor.constraint(equalTo: view.topAnchor),
+            v.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
 }

@@ -4,6 +4,7 @@ import StoplightCore
 /// The main window's Pull Requests tab: the panel's sections, full width.
 struct PullRequestsPane: View {
     @Bindable var model: AppModel
+    private static let ago: RelativeDateTimeFormatter = { let f = RelativeDateTimeFormatter(); f.unitsStyle = .short; return f }()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,7 +16,11 @@ struct PullRequestsPane: View {
                         .buttonStyle(.plain)
                 }
                 if let t = model.lastRefresh {
-                    Text("Updated \(t, style: .relative) ago").font(.caption).foregroundStyle(.tertiary).monospacedDigit()
+                    // Once a minute, not every second (`style: .relative` redraws even while the tab is hidden).
+                    TimelineView(.everyMinute) { ctx in
+                        Text(ctx.date.timeIntervalSince(t) < 60 ? "Updated just now" : "Updated \(Self.ago.localizedString(for: t, relativeTo: ctx.date))")
+                            .font(.caption).foregroundStyle(.tertiary)
+                    }
                 }
                 Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).help("Refresh")
