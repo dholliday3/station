@@ -70,6 +70,17 @@ enum StationMenuBar {
                 }
             }
         }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "agentfilter" { // the Agents filter grammar
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                let all = AgentSession.all()
+                for q in ["", "marketing", "is:ended", "repo:servicepro", "repo:servicepro is:ended branch:main", "pr:654", "model:opus", "is:running is:idle", "is:"] {
+                    let f = AgentFilter(q)
+                    let hits = f.isEmpty ? all : all.filter(f.matches)
+                    FileHandle.standardError.write("[selftest] \u{201C}\(q)\u{201D} → \(hits.count): \(hits.prefix(2).map(\.title)) chips \(AgentFilter.suggestions(for: q, sessions: all).prefix(4))\n".data(using: .utf8)!)
+                }
+                FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!)
+            }
+        }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "nav" { // links and the way back
             let repo = ProcessInfo.processInfo.environment["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath
             let steps: [(String, () -> Void)] = [

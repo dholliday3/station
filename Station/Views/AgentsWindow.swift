@@ -108,9 +108,8 @@ struct AgentsView: View {
 
     private var sessions: [AgentSession] {
         let all = AgentSession.all().filter { showBackground || !($0.status == .ended && $0.info?.isBackground == true) }
-        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return all }
-        return all.filter { "\($0.title) \($0.project) \($0.info?.branch ?? "") \($0.info?.firstPrompt ?? "")".lowercased().contains(q) }
+        let filter = AgentFilter(search)
+        return filter.isEmpty ? all : all.filter(filter.matches)
     }
 
     var body: some View {
@@ -165,21 +164,50 @@ struct AgentsView: View {
     private func header(_ list: [AgentSession]) -> some View {
         let count = { (s: AgentSession.Status) in list.filter { $0.status == s }.count }
         return HStack(spacing: 10) {
-            chip("\(count(.needsYou)) need you", .orange, on: count(.needsYou) > 0)
-            chip("\(count(.running)) running", .blue, on: count(.running) > 0)
-            chip("\(count(.idle)) idle", .green, on: count(.idle) > 0)
+            chip("\(count(.needsYou)) need you", .orange, on: count(.needsYou) > 0, token: "is:needs-you")
+            chip("\(count(.running)) running", .blue, on: count(.running) > 0, token: "is:running")
+            chip("\(count(.idle)) idle", .green, on: count(.idle) > 0, token: "is:idle")
             Spacer()
-            TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
+            TextField("Filter: words, is:running, repo:, branch:, pr:, model:", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .safeAreaInset(edge: .bottom, spacing: 0) { suggestionRow }
     }
 
-    private func chip(_ text: String, _ color: Color, on: Bool) -> some View {
-        Text(text).font(.system(size: 11.5, weight: .semibold))
-            .foregroundStyle(on ? color : .secondary)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill((on ? color : Color.secondary).opacity(0.12)))
+    /// Chips completing the filter being typed: prefixes, then values your sessions have.
+    @ViewBuilder private var suggestionRow: some View {
+        let chips = AgentFilter.suggestions(for: search, sessions: AgentSession.all())
+        if !chips.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(chips, id: \.self) { c in
+                        Button { search = AgentFilter.complete(search, with: c) } label: {
+                            Text(c).font(.caption2).monospaced().foregroundStyle(.secondary)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    /// A status count that filters to it (click again to clear).
+    private func chip(_ text: String, _ color: Color, on: Bool, token: String) -> some View {
+        let active = AgentFilter(search).tokens.contains(token)
+        return Button { search = AgentFilter.toggle(token, in: search) } label: {
+            Text(text).font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(on || active ? color : .secondary)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill((on || active ? color : Color.secondary).opacity(active ? 0.3 : 0.12)))
+                .overlay(Capsule().strokeBorder(active ? color : .clear))
+        }
+        .buttonStyle(.plain)
+        .help(active ? "Show all" : "Show only these (\(token))")
     }
 
     private var offer: some View {
@@ -422,5 +450,86 @@ private struct EditedFiles: View {
                 Button(showAll ? "Show fewer" : "Show all \(files.count)") { showAll.toggle() }.buttonStyle(.link).font(.caption)
             }
         }
+    }
+}
+
+/// The Agents filter: words match the title, first prompt, project and branch; is:running,
+/// is:needs-you, is:idle, is:ended, is:live, is:background; repo:, branch:, pr:, model:.
+struct AgentFilter {
+    private(set) var tokens: [String] = []
+    private var words: [String] = []
+    var isEmpty: Bool { tokens.isEmpty && words.isEmpty }
+
+    static let prefixes = ["is:", "repo:", "branch:", "pr:", "model:"]
+    static let states = ["running", "needs-you", "idle", "ended", "live", "background"]
+
+    init(_ text: String) {
+        for raw in text.lowercased().split(separator: " ").map(String.init) {
+            if Self.prefixes.contains(where: { raw.hasPrefix($0) && raw.count > $0.count }) { tokens.append(raw) } else { words.append(raw) }
+        }
+    }
+
+    func matches(_ s: AgentSession) -> Bool {
+        let hay = "\(s.title) \(s.project) \(s.info?.branch ?? "") \(s.info?.firstPrompt ?? "")".lowercased()
+        guard words.allSatisfy(hay.contains) else { return false }
+        // Same prefix: any of them (is:running is:idle); different prefixes: all.
+        let byPrefix = Dictionary(grouping: tokens) { t in Self.prefixes.first { t.hasPrefix($0) }! }
+        return byPrefix.allSatisfy { prefix, values in
+            values.contains { t in
+                let v = String(t.dropFirst(prefix.count))
+                switch prefix {
+                case "is:":
+                    switch v {
+                    case "running": return s.status == .running
+                    case "needs-you": return s.status == .needsYou
+                    case "idle": return s.status == .idle || s.status == .ready
+                    case "ended": return s.status == .ended
+                    case "live": return s.status != .ended
+                    case "background": return s.info?.isBackground == true
+                    default: return false
+                    }
+                case "repo:": return s.project.lowercased().contains(v) || (s.info?.pr?.repo.lowercased().contains(v) ?? false)
+                case "branch:": return s.info?.branch?.lowercased().contains(v) ?? false
+                case "pr:": return s.info?.pr.map { String($0.number) == v.trimmingCharacters(in: CharacterSet(charactersIn: "#")) } ?? false
+                case "model:": return s.model?.lowercased().replacingOccurrences(of: " ", with: "-").contains(v) ?? false
+                default: return false
+                }
+            }
+        }
+    }
+
+    /// What to offer for the token being typed.
+    static func suggestions(for text: String, sessions: [AgentSession]) -> [String] {
+        let last = text.split(separator: " ", omittingEmptySubsequences: false).last.map(String.init)?.lowercased() ?? ""
+        guard !text.isEmpty else { return [] }
+        func pick(_ prefix: String, _ values: [String]) -> [String] {
+            let partial = String(last.dropFirst(prefix.count))
+            let uniq = (NSOrderedSet(array: values.filter { !$0.isEmpty }).array as? [String]) ?? []
+            return uniq.filter { partial.isEmpty || $0.lowercased().contains(partial) }.prefix(10).map { prefix + $0 }
+        }
+        switch true {
+        case last.hasPrefix("is:"): return pick("is:", states)
+        case last.hasPrefix("repo:"): return pick("repo:", sessions.map(\.project))
+        case last.hasPrefix("branch:"): return pick("branch:", sessions.compactMap { $0.info?.branch })
+        case last.hasPrefix("pr:"): return pick("pr:", sessions.compactMap { $0.info?.pr.map { String($0.number) } })
+        case last.hasPrefix("model:"): return pick("model:", sessions.compactMap { $0.model?.replacingOccurrences(of: " ", with: "-") })
+        case last.isEmpty || !last.contains(":"): return prefixes.filter { last.isEmpty || $0.hasPrefix(last) }
+        default: return []
+        }
+    }
+
+    /// `text` with its last token replaced by `chip` (and a space after a finished value).
+    static func complete(_ text: String, with chip: String) -> String {
+        var parts = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        if parts.isEmpty { parts = [""] }
+        parts[parts.count - 1] = chip
+        return parts.joined(separator: " ") + (chip.hasSuffix(":") ? "" : " ")
+    }
+
+    /// Add or remove one token.
+    static func toggle(_ token: String, in text: String) -> String {
+        var parts = text.split(separator: " ").map(String.init)
+        if let i = parts.firstIndex(where: { $0.lowercased() == token }) { parts.remove(at: i) } else { parts.append(token) }
+        return parts.joined(separator: " ") + (parts.isEmpty ? "" : " ")
     }
 }
