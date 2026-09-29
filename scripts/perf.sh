@@ -35,7 +35,7 @@ typeset -A BUDGET=(
   tab_agents_ms           80
   tab_prs_ms              80
   tab_review_ms           80
-  session_scan_ms       2000
+  session_scan_ms       1500
   session_rescan_ms       25
   token_count_warm_ms     25
   idle_cpu_pct           1.0

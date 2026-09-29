@@ -82,13 +82,21 @@ final class SessionCatalog {
         DispatchQueue.global(qos: .utility).async {
             let began = DispatchTime.now()
             let files = Self.recentFiles()
-            var infos: [String: Info] = [:], skims: [String: Skim] = [:]
-            for (file, modified, size) in files {
-                var info: Info
-                if let k = known[file.path], k.size == size, k.modified == modified { info = k.info } else {
-                    info = autoreleasepool { Self.skim(file) }
+            // Changed files are skimmed in parallel: a cold launch reads ~50 MB of transcripts.
+            var fresh = [Info?](repeating: nil, count: files.count)
+            let stale = files.indices.filter { let (f, m, n) = files[$0]; return !(known[f.path].map { $0.size == n && $0.modified == m } ?? false) }
+            fresh.withUnsafeMutableBufferPointer { out in
+                nonisolated(unsafe) let out = out
+                DispatchQueue.concurrentPerform(iterations: stale.count) { k in
+                    let (file, modified, _) = files[stale[k]]
+                    var info = autoreleasepool { Self.skim(file) }
                     info.lastActivity = info.lastActivity ?? modified
+                    out[stale[k]] = info
                 }
+            }
+            var infos: [String: Info] = [:], skims: [String: Skim] = [:]
+            for (n, (file, modified, size)) in files.enumerated() {
+                guard var info = fresh[n] ?? known[file.path]?.info else { continue }
                 skims[file.path] = Skim(size: size, modified: modified, info: info)
                 if let t = tallies[file.path] {
                     info.inputTokens = t.input; info.outputTokens = t.output; info.cacheReadTokens = t.cacheRead; info.cacheWriteTokens = t.cacheWrite; info.turns = t.turns
