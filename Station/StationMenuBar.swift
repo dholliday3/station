@@ -50,6 +50,15 @@ enum StationMenuBar {
                 if delay > 10 { FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!) }
             } }
         }
+        if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "icon", let out = ProcessInfo.processInfo.environment["STATION_SNAP_OUT"] {
+            for dark in [false, true] {
+                let img = AppIcon.rendered(dark: dark)
+                if let tiff = img.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: "\(out)-\(dark ? "dark" : "light").png"))
+                }
+            }
+            FileHandle.standardError.write("[selftest] ready\n".data(using: .utf8)!)
+        }
         if ProcessInfo.processInfo.environment["STATION_SELFTEST"] == "nav" { // links and the way back
             let repo = ProcessInfo.processInfo.environment["STATION_SELFTEST_REPO"] ?? FileManager.default.currentDirectoryPath
             let steps: [(String, () -> Void)] = [

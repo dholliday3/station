@@ -1,0 +1,5 @@
+{
+  "fill-specializations" : [ { "value" : { "solid" : "srgb:1.00000,1.00000,1.00000,1.00000" } }, { "appearance" : "dark", "value" : { "solid" : "srgb:0.00000,0.00000,0.00000,1.00000" } } ],
+  "groups" : [ { "layers" : [ { "image-name-specializations" : [ { "value" : "stripes-light.png" }, { "appearance" : "dark", "value" : "stripes-dark.png" } ], "name" : "stripes" } ] } ],
+  "supported-platforms" : { "squares" : [ "macOS" ] }
+}
