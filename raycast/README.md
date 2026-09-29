@@ -17,17 +17,30 @@ Drafts are hollow and don't go red over conflicts or pending review.
 
 The icons on the right are always in the same order, so they line up down the list: **Comments · Review · CI · Merge · Queue**. An empty cell means there's nothing to report. Hover any of them for a summary, or press `↵` for the details page. Stacked PRs sit under the PR they're based on, marked `↳`, the way Station's panel lays them out.
 
+## The details page
+
+`↵` on a row opens its details page, which is built for watching progress and reading feedback:
+
+- **CI, live.** Each workflow run with its failed jobs, the step they failed at and the lines from the log that say why. Running jobs show the step they're on. While anything runs, the page refreshes every 10 seconds. It also shows the merge queue's run, the run after a merge, and whether the PR is in the queue or was dropped from it (and why).
+- **Conversation.** Unresolved review threads first, with their replies, then comments and reviews, newest first. A resolved thread takes one line. Bot comments are folded away (`⌥⌘B`).
+- **Description.** Folded away until you want it (`⌘D`).
+- **Sidebar.** CI, reviews, comments, merge and queue as short lines with the list's icons, plus the PR link to share.
+
+![Details](metadata/station-2.png)
+
 ## Setup
 
 - **[Station](https://github.com/timmywheels/station)** running: the list comes from its snapshot on `127.0.0.1:47400`, so it matches the menu bar exactly and costs no extra GitHub calls.
-- **[GitHub CLI](https://cli.github.com)** signed in (`gh auth login`): unresolved threads, requested reviewers and merge queue history come from one GraphQL query through `gh`. Without it, comments and reviews still come from Station's snapshot. It's also the fallback when Station isn't running.
+- **[GitHub CLI](https://cli.github.com)** signed in (`gh auth login`): unresolved threads, requested reviewers and merge queue history come from one GraphQL query through `gh`, and the details page's live CI and conversation come from two more per refresh (1 point each against GitHub's rate limit). Failed job logs are read once each. Without `gh`, comments and reviews still come from Station's snapshot. It's also the fallback when Station isn't running.
 
 ## Shortcuts
 
 | Key | Action |
 | --- | --- |
-| `↵` | Show details: every dimension spelled out, failing checks, links |
-| `⌘↵` | Review in Station |
+| `↵` | Show details (in the list) / review in Station (on the details page) |
+| `⌘↵` | Review in Station (in the list) / copy URL (on the details page) |
+| `⌘D` / `⌥⌘B` | Show the description / bot comments (details page) |
+| `⇧⌘J` | Open the first failed or running job (details page) |
 | `⌘O` | Open on GitHub |
 | `⇧⌘A` / `⇧⌘K` / `⇧⌘M` | Actions run / checks tab / merge queue |
 | `⇧⌘F` | Files changed |

@@ -1,67 +1,33 @@
 import {
   Action,
   ActionPanel,
-  Application,
   Color,
-  Detail,
   getApplications,
   getPreferenceValues,
   Icon,
-  Keyboard,
   LaunchProps,
   List,
 } from "@raycast/api";
 import { useCachedPromise, usePromise } from "@raycast/utils";
-import { ReactNode, useMemo, useState } from "react";
-import { activityFromSnapshot, ActivityMap, fetchActivity, nodeID, PRActivity } from "./lib/activity";
+import { useMemo, useState } from "react";
+import { PRActions, STATION_BUNDLE_ID } from "./actions";
+import { PRDetailView, ViewRow } from "./detail";
+import { activityFromSnapshot, ActivityMap, fetchActivity, nodeID } from "./lib/activity";
 import { refLabel, rowBadges, showsAuthor, stackDepths, stackLayout, viewerLogin } from "./lib/badges";
 import { demoActivity, demoPRs } from "./lib/demo";
 import { findGh } from "./lib/github";
-import {
-  actionsRunURL,
-  checksURL,
-  ColorProfile,
-  compactAgo,
-  isBranch,
-  isStale,
-  orderedRows,
-  PullRequest,
-  queueURL,
-  reviewURL,
-  Row,
-  shareLink,
-  shortRef,
-  sortChecks,
-} from "./lib/model";
+import { ColorProfile, compactAgo, isBranch, isStale, orderedRows } from "./lib/model";
 import { loadPRs, NoSourceError } from "./lib/source";
-import { columns, dimensions, Light, lightLabel, statusMark, statusTooltip, Verdict, verdict } from "./lib/status";
-import {
-  badgeAccessory,
-  columnAccessory,
-  failedCheckImage,
-  glyph,
-  lightIcon,
-  markdownDot,
-  statusImage,
-  menuBarDots,
-} from "./style";
+import { columns, Light, lightLabel, statusMark, statusTooltip, verdict } from "./lib/status";
+import { badgeAccessory, columnAccessory, glyph, lightIcon, menuBarDots, statusImage } from "./style";
 
 interface Preferences {
   ghPath?: string;
 }
 
-const STATION_BUNDLE_ID = "com.timwheeler.station";
-const STATION_DOWNLOAD = "https://github.com/timmywheels/station/releases/latest";
-
 const LIGHTS: Light[] = ["needsYou", "waiting", "ready", "quiet", "merged"];
 
 type Filter = "all" | Light;
-
-interface ViewRow extends Row {
-  activity?: PRActivity;
-  verdict: Verdict;
-  depth: number;
-}
 
 function accessories(row: ViewRow, pinned: boolean, profile: ColorProfile): List.Item.Accessory[] {
   const { pr } = row;
@@ -71,173 +37,6 @@ function accessories(row: ViewRow, pinned: boolean, profile: ColorProfile): List
     { text: compactAgo(when), tooltip: `${pr.mergedAt ? "Merged" : "Updated"} ${new Date(when).toLocaleString()}` },
     ...columns(pr, row.activity).map((column) => columnAccessory(column, profile)),
   ];
-}
-
-function detailMarkdown(row: ViewRow): string {
-  const { pr, verdict: v } = row;
-  const mark = statusMark(pr, v);
-  const why = v.reasons.length ? ` · ${v.reasons.join(", ")}` : "";
-  const lines = [
-    `## ${pr.title}`,
-    "",
-    `${markdownDot(mark.kind === "dot" ? mark.state : mark.broken ? "failure" : "merged")} **${lightLabel[v.light]}**${why}`,
-    "",
-  ];
-  for (const d of dimensions(pr, row.activity)) {
-    lines.push(`${markdownDot(d.state)} **${d.label}** · ${d.summary}  `);
-    if (d.slot !== "ci") continue;
-    for (const check of sortChecks(pr.checks).filter((c) => c.state === "failure")) {
-      lines.push(`    ![](${failedCheckImage()}) ${check.url ? `[${check.name}](${check.url})` : check.name}  `);
-    }
-  }
-  if (!row.activity) lines.push("", "_Comments, reviewers and queue history load from GitHub…_");
-  if (pr.summary) lines.push("", "---", "", pr.summary.replace(/\n/g, "\n\n"));
-  return lines.join("\n");
-}
-
-function PRDetailView(props: { row: ViewRow; station?: Application; refresh: () => void }) {
-  const { pr } = props.row;
-  const run = actionsRunURL(pr);
-  const queue = queueURL(pr);
-  const when = pr.mergedAt ?? pr.updatedAt;
-  return (
-    <Detail
-      navigationTitle={shortRef(pr)}
-      markdown={detailMarkdown(props.row)}
-      metadata={
-        <Detail.Metadata>
-          {!isBranch(pr) && <Detail.Metadata.Link title={pr.repo} text={`#${pr.number}`} target={pr.url} />}
-          <Detail.Metadata.Label
-            title="Branch"
-            icon={glyph("branch", Color.SecondaryText)}
-            text={pr.baseRefName ? `${pr.headRefName} → ${pr.baseRefName}` : pr.headRefName}
-          />
-          {pr.author && <Detail.Metadata.Label title="Author" text={`@${pr.author}`} />}
-          <Detail.Metadata.Label
-            title={pr.mergedAt ? "Merged" : "Updated"}
-            text={`${compactAgo(when)} ago · ${new Date(when).toLocaleString()}`}
-          />
-          <Detail.Metadata.Separator />
-          {pr.checks.length > 0 && <Detail.Metadata.Link title="Checks" text="Checks tab" target={checksURL(pr)} />}
-          {run && <Detail.Metadata.Link title="Actions" text="Run summary" target={run} />}
-          {queue && <Detail.Metadata.Link title="Merge queue" text={pr.baseRefName} target={queue} />}
-          {!isBranch(pr) && <Detail.Metadata.Link title="Files" text="Files changed" target={`${pr.url}/files`} />}
-        </Detail.Metadata>
-      }
-      actions={<PRActions pr={pr} station={props.station} refresh={props.refresh} />}
-    />
-  );
-}
-
-/** ↵ is the first action, ⌘↵ the second; in the list the first one opens the details page. */
-function PRActions(props: { pr: PullRequest; station?: Application; refresh: () => void; details?: ReactNode }) {
-  const { pr, station } = props;
-  const run = actionsRunURL(pr);
-  const queue = queueURL(pr);
-
-  return (
-    <ActionPanel title={shortRef(pr)}>
-      <ActionPanel.Section>
-        {props.details && <Action.Push title="Show Details" icon={Icon.Sidebar} target={props.details} />}
-        {station && !isBranch(pr) && (
-          <Action.Open
-            title="Review in Station"
-            icon={{ fileIcon: station.path }}
-            target={reviewURL(pr)}
-            application={station}
-          />
-        )}
-        <Action.OpenInBrowser
-          title={isBranch(pr) ? "Open Commit on GitHub" : "Open on GitHub"}
-          icon={Icon.ArrowNe}
-          url={pr.url}
-          shortcut={Keyboard.Shortcut.Common.Open}
-        />
-      </ActionPanel.Section>
-      <ActionPanel.Section title="Dig Deeper">
-        {!isBranch(pr) && (
-          <Action.OpenInBrowser
-            title="Open Files Changed"
-            icon={Icon.Document}
-            url={`${pr.url}/files`}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "f" }}
-          />
-        )}
-        {run && (
-          <Action.OpenInBrowser
-            title="Open Actions Run"
-            icon={Icon.BulletPoints}
-            url={run}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
-          />
-        )}
-        {pr.checks.length > 0 && (
-          <Action.OpenInBrowser
-            title="Open Checks Tab"
-            icon={Icon.CheckList}
-            url={checksURL(pr)}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
-          />
-        )}
-        {queue && (
-          <Action.OpenInBrowser
-            title="Open Merge Queue"
-            icon={glyph("queue")}
-            url={queue}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
-          />
-        )}
-      </ActionPanel.Section>
-      <ActionPanel.Section title="Copy">
-        <Action.CopyToClipboard
-          title="Copy URL"
-          icon={Icon.CopyClipboard}
-          content={pr.url}
-          shortcut={Keyboard.Shortcut.Common.Copy}
-        />
-        <Action.CopyToClipboard
-          title="Share (Title as a Link)"
-          icon={Icon.Upload}
-          content={shareLink(pr)}
-          shortcut={{ modifiers: ["cmd", "shift"], key: "l" }}
-        />
-        {pr.headRefName && (
-          <Action.CopyToClipboard
-            title="Copy Branch Name"
-            icon={glyph("branch")}
-            content={pr.headRefName}
-            shortcut={{ modifiers: ["cmd"], key: "b" }}
-          />
-        )}
-        {pr.headSha && (
-          <Action.CopyToClipboard
-            title={`Copy Commit Hash (${pr.headSha.slice(0, 7)})`}
-            icon={Icon.Hashtag}
-            content={pr.headSha}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "b" }}
-          />
-        )}
-      </ActionPanel.Section>
-      <ActionPanel.Section>
-        <Action
-          title="Refresh"
-          icon={Icon.ArrowClockwise}
-          onAction={props.refresh}
-          shortcut={Keyboard.Shortcut.Common.Refresh}
-        />
-        {station ? (
-          <Action.Open
-            title="Open Station"
-            icon={{ fileIcon: station.path }}
-            target={station.path}
-            shortcut={{ modifiers: ["cmd", "opt"], key: "o" }}
-          />
-        ) : (
-          <Action.OpenInBrowser title="Get Station" icon={Icon.Download} url={STATION_DOWNLOAD} />
-        )}
-      </ActionPanel.Section>
-    </ActionPanel>
-  );
 }
 
 function FilterDropdown(props: {
@@ -337,7 +136,18 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
 
   const linked = props.launchContext?.pr;
   const linkedRow = linked ? rows.find((row) => row.pr.number === linked) : undefined;
-  if (linkedRow) return <PRDetailView row={linkedRow} station={station} refresh={refresh} />;
+  const detailView = (row: ViewRow) => (
+    <PRDetailView
+      row={row}
+      station={station}
+      refresh={refresh}
+      ghPath={ghPath}
+      demo={demo}
+      showAuthor={showsAuthor(row.pr, row.section, viewer)}
+      profile={profile}
+    />
+  );
+  if (linkedRow) return detailView(linkedRow);
 
   const navigationTitle =
     data?.source === "gh"
@@ -393,14 +203,7 @@ export default function Command(props: LaunchProps<{ launchContext?: LaunchConte
                 subtitle={showsAuthor(pr, section, viewer) ? `${ref} · @${pr.author}` : ref}
                 keywords={[pr.repo, String(pr.number), pr.headRefName, pr.author].filter(Boolean)}
                 accessories={accessories(row, pinned.has(pr.id), profile)}
-                actions={
-                  <PRActions
-                    pr={pr}
-                    station={station}
-                    refresh={refresh}
-                    details={<PRDetailView row={row} station={station} refresh={refresh} />}
-                  />
-                }
+                actions={<PRActions pr={pr} station={station} refresh={refresh} details={detailView(row)} />}
               />
             );
           })}

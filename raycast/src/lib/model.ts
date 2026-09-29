@@ -181,11 +181,6 @@ export function countByState(prs: PullRequest[]): Record<CIState, number> {
   return counts;
 }
 
-const checkOrder: Record<CheckState, number> = { failure: 0, pending: 1, success: 2, skipped: 3 };
-
-export const sortChecks = (checks: CheckResult[]): CheckResult[] =>
-  [...checks].sort((a, b) => checkOrder[a.state] - checkOrder[b.state] || a.name.localeCompare(b.name));
-
 export function compactAgo(iso: string, now: number = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
   if (seconds < 60) return "now";

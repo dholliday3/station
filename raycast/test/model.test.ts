@@ -12,7 +12,6 @@ import {
   queueURL,
   rollup,
   shareLink,
-  sortChecks,
 } from "../src/lib/model";
 import { check, makePR, makeSnapshot } from "./fixtures";
 
@@ -109,13 +108,6 @@ describe("counts and formatting", () => {
     const pr = makePR({ checks: [check("a", "failure")] });
     expect(countByState([pr, pr, makePR({ id: "b" })])).toEqual({ failure: 1, pending: 0, success: 1, none: 0 });
   });
-
-  it("lists failing checks first", () =>
-    expect(
-      sortChecks([check("b", "success"), check("z", "failure"), check("a", "pending"), check("c", "skipped")]).map(
-        (c) => c.name,
-      ),
-    ).toEqual(["z", "a", "b", "c"]));
 
   it("formats ages compactly", () => {
     const now = Date.parse("2026-09-25T12:00:00Z");

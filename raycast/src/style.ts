@@ -87,8 +87,6 @@ export function columnAccessory(column: Column, profile: ColorProfile): List.Ite
 const appearance = () => (environment.appearance === "dark" ? "dark" : "light");
 
 /** Markdown images can't follow the theme, so these come pre-colored per appearance. */
-export const failedCheckImage = () => `check-failed-${appearance()}.svg?raycast-width=13&raycast-height=13`;
-
 export const markdownDot = (state: CIState | "merged") =>
   `![](dot-${state}-${appearance()}.svg?raycast-width=11&raycast-height=11)`;
 
