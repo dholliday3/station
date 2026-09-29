@@ -22,6 +22,8 @@ final class AgentBoard {
         let state: State
         let task: String?
         let detail: String?
+        /// The first line of its last reply (when done).
+        let summary: String?
         let since: Date
         var project: String { (cwd as NSString).lastPathComponent }
     }
@@ -81,14 +83,18 @@ final class AgentBoard {
             if Date().timeIntervalSince(updated) > 24 * 3600 { try? fm.removeItem(at: url); continue }
             list.append(Agent(id: id, agent: r["agent"] as? String ?? "claude", cwd: cwd, pid: pid,
                               state: State(rawValue: r["state"] as? String ?? "") ?? .ready,
-                              task: r["task"] as? String, detail: r["detail"] as? String,
+                              task: r["task"] as? String, detail: r["detail"] as? String, summary: r["summary"] as? String,
                               since: Date(timeIntervalSince1970: (r["since"] as? NSNumber)?.doubleValue ?? updated.timeIntervalSince1970)))
         }
         list.sort { ($0.state.rank, $1.since) < ($1.state.rank, $0.since) }
         let before = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0) })
         if list != agents { agents = list }
         if loadedOnce {
-            for a in list where before[a.id]?.state != a.state && (a.state == .needsYou || (a.state == .done && before[a.id] != nil)) { notify(a) }
+            for a in list {
+                guard let prev = before[a.id], prev.state != a.state else { continue }
+                // Done after a short turn: you were likely watching. Needs you: always worth saying.
+                if a.state == .needsYou || (a.state == .done && prev.state == .working && a.since.timeIntervalSince(prev.since) >= 30) { notify(a) }
+            }
         }
         loadedOnce = true
         for a in list where branches[a.cwd] == nil { lookUpBranch(a.cwd) }
@@ -112,15 +118,40 @@ final class AgentBoard {
 
     // MARK: Telling you
 
+    /// Tell you, unless its terminal is the app in front (you're already looking at it).
     private func notify(_ a: Agent) {
+        guard let pid = a.pid else { return post(a) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let hosts = Self.ancestors(of: pid)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if let front = NSWorkspace.shared.frontmostApplication?.processIdentifier, hosts.contains(front) { return }
+                    AgentBoard.shared.post(a)
+                }
+            }
+        }
+    }
+
+    private func post(_ a: Agent) {
         let content = UNMutableNotificationContent()
         content.title = a.state == .needsYou ? "\(a.agent) needs you · \(a.project)" : "\(a.agent) is done · \(a.project)"
-        content.body = (a.state == .needsYou ? a.detail : a.task) ?? ""
+        content.body = (a.state == .needsYou ? a.detail : a.summary ?? a.task.map { "Finished: \($0)" }) ?? ""
         content.userInfo = ["url": "station://focus/\(a.id)"]
         content.threadIdentifier = "agent-\(a.id)"
         content.sound = a.state == .needsYou ? .default : nil
         content.interruptionLevel = a.state == .needsYou ? .timeSensitive : .active
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "agent-\(a.id)-\(a.state.rawValue)", content: content, trigger: nil))
+    }
+
+    /// The process's parents, up to launchd: the terminal app running it is one of them.
+    nonisolated private static func ancestors(of pid: pid_t) -> [pid_t] {
+        var p = pid, out: [pid_t] = []
+        for _ in 0..<16 {
+            p = parent(of: p)
+            guard p > 1 else { break }
+            out.append(p)
+        }
+        return out
     }
 
     // MARK: Going to it
@@ -134,25 +165,21 @@ final class AgentBoard {
     func focus(_ a: Agent) {
         guard let pid = a.pid else { return }
         DispatchQueue.global(qos: .userInitiated).async {
-            var p = pid, hosts: [pid_t] = []
-            for _ in 0..<16 {
-                p = Self.parent(of: p)
-                guard p > 1 else { break }
-                hosts.append(p)
-            }
+            let hosts = Self.ancestors(of: pid)
             let tty = Self.ps("tty=", pid).map { "/dev/" + $0 }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    let app = hosts.lazy.compactMap { NSRunningApplication(processIdentifier: $0) }.first { $0.activationPolicy == .regular }
-                    if let tty, let id = app?.bundleIdentifier, let script = Self.selectTab(app: id, tty: tty) {
-                        let p = Process()
-                        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                        p.arguments = ["-e", script]
-                        p.standardOutput = FileHandle.nullDevice
-                        p.standardError = FileHandle.nullDevice
-                        try? p.run()
-                    }
-                    app?.activate()
+                    guard let app = hosts.lazy.compactMap({ NSRunningApplication(processIdentifier: $0) }).first(where: { $0.activationPolicy == .regular }),
+                          let id = app.bundleIdentifier else { return }
+                    // AppleScript, not NSRunningApplication.activate(): since macOS 14 an app that isn't in
+                    // front (the panel never takes focus) can't bring another app forward that way.
+                    let script = (tty.flatMap { Self.selectTab(app: id, tty: $0) } ?? "") + "\ntell application id \"\(id)\" to activate"
+                    let p = Process()
+                    p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                    p.arguments = ["-e", script]
+                    p.standardOutput = FileHandle.nullDevice
+                    p.standardError = FileHandle.nullDevice
+                    try? p.run()
                 }
             }
         }
@@ -165,7 +192,7 @@ final class AgentBoard {
         switch app {
         case "com.apple.Terminal":
             return """
-            tell application "Terminal"
+            tell application id "com.apple.Terminal"
               repeat with w in windows
                 repeat with t in tabs of w
                   if tty of t is "\(tty)" then
@@ -178,7 +205,7 @@ final class AgentBoard {
             """
         case "com.googlecode.iterm2":
             return """
-            tell application "iTerm2"
+            tell application id "com.googlecode.iterm2"
               repeat with w in windows
                 repeat with t in tabs of w
                   repeat with s in sessions of t

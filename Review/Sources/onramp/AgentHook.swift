@@ -50,12 +50,30 @@ public enum AgentHook {
             if message.localizedCaseInsensitiveContains("permission") || state == "working" { set("needs_you", detail: oneLine(message, 120)) }
         case "Stop":
             set("done", detail: nil)
+            // What it said last: the notification tells you the answer, not your own prompt back.
+            r["summary"] = (r["transcript"] as? String).flatMap(lastReply).flatMap { oneLine($0, 160) }
         default:
             return 0
         }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if let data = try? JSONSerialization.data(withJSONObject: r, options: [.sortedKeys]) { try? data.write(to: url, options: .atomic) }
         return 0
+    }
+
+    /// The text of the transcript's last assistant message. Reads only the file's tail.
+    static func lastReply(_ path: String) -> String? {
+        guard let h = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? h.close() }
+        let size = (try? h.seekToEnd()) ?? 0
+        try? h.seek(toOffset: size > 262_144 ? size - 262_144 : 0)
+        guard let data = try? h.readToEnd(), let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n").reversed() {
+            guard line.contains("\"assistant\""), let e = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  e["type"] as? String == "assistant", let m = e["message"] as? [String: Any], let content = m["content"] as? [[String: Any]] else { continue }
+            let words = content.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined(separator: " ")
+            if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return words }
+        }
+        return nil
     }
 
     /// "Edit SharedStore.swift", "Bash: pnpm test", "Grep: TODO".
